@@ -1,6 +1,6 @@
 {
-  "last_node_id": 10,
-  "last_link_id": 10,
+  "last_node_id": 7,
+  "last_link_id": 5,
   "nodes": [
     {
       "id": 1,
@@ -216,76 +216,27 @@
     },
     {
       "id": 7,
-      "type": "R3 RandomSeed",
+      "type": "Seed (rgthree)",
       "pos": [100, 420],
-      "size": [200, 120],
+      "size": [240, 100],
       "flags": {},
-      "order": 0,
+      "order": 6,
       "mode": 0,
       "inputs": [],
       "outputs": [
         {
-          "name": "seed",
+          "name": "SEED",
           "type": "INT",
           "links": null,
-          "slot_index": 0,
-          "label": "Seed"
+          "slot_index": 0
         }
       ],
-      "title": "🎲 Global Seed",
+      "title": "🎲 Global Seed (rgthree)",
       "properties": {
         "color": "#4a4a4a",
         "bgcolor": "#2a2a2a"
       },
-      "widgets_values": [123456789, true, "Random"]
-    },
-    {
-      "id": 8,
-      "type": "Note",
-      "pos": [100, 600],
-      "size": [680, 200],
-      "flags": {},
-      "order": 0,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "title": "Note",
-      "properties": {},
-      "values": [
-        "Multi-Scene Cinematic Pipeline\n\nFlow:\n  1. Agnes 2.0 Flash expands short prompt\n  2. Refinement pass adds DOF, lens, grading\n  3. Scene 1: Nebula entrance (441 frames, 18.4s)\n  4. Scene 2: Black hole transition (241 frames, 10s)\n  5. Scene 3: Cosmic climax (241 frames, 10s)\n\nTotal runtime: ~38 seconds\n\nEach scene can use the previous scene's\nlast frame as image-to-video input.\nConnect Scene 1 output → Scene 2 image,\nScene 2 output → Scene 3 image for seamless\ntransitions.\n\nExternal concat (FFmpeg/QuickTime) → final film."
-      ]
-    },
-    {
-      "id": 9,
-      "type": "Note",
-      "pos": [1520, 940],
-      "size": [680, 120],
-      "flags": {},
-      "order": 0,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "title": "Note",
-      "properties": {},
-      "values": [
-        "⚠️ Scenes are generated independently.\nTo chain them: extract last frame of\nScene N, paste as 'image' input of Scene N+1\nfor image-to-video continuity.\n\nOr use Scene 1 (text-to-video) as source\nfor Scene 2 and 3 (image-to-video)."
-      ]
-    },
-    {
-      "id": 10,
-      "type": "Note",
-      "pos": [560, 820],
-      "size": [680, 100],
-      "flags": {},
-      "order": 0,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "title": "Pro Tips",
-      "properties": {},
-      "values": [
-        "• Lower temperature (0.5) for refinement → more deterministic\n• Higher temperature (0.8) for scene variants → creative diversity\n• 441 frames = 18.4s, 241 frames = 10s, 121 frames = 5s\n• num_frames must be 8n+1 and ≤ 441 (rule enforced client-side)"
-      ]
+      "widgets_values": [123456789]
     }
   ],
   "links": [
@@ -336,10 +287,10 @@
     "info": {
       "name": "Multi-Scene Cinematic Pipeline (3 Scenes)",
       "author": "Agnes Workflow Generator",
-      "description": "Advanced multi-scene video pipeline: expand → refine → generate Scene 1 (text-to-video, 441 frames) → generate Scene 2 (image-to-video, 241 frames) → generate Scene 3 (image-to-video, 241 frames). Total ~38 seconds. Scenes can be chained via last-frame extraction for seamless narrative transitions.",
+      "description": "Advanced multi-scene video pipeline: expand → refine → generate Scene 1 (text-to-video, 441 frames) → generate Scene 2 (image-to-video, 241 frames) → generate Scene 3 (image-to-video, 241 frames). Total ~38 seconds. Scenes can be chained via last-frame extraction for seamless narrative transitions. Requires: agnes_api custom node (custom_nodes/agnes_api) + rgthree-comfy (Seed node).",
       "copyright": "MIT",
       "licence": "",
-      "date": "2026-06-04"
+      "date": "2026-06-05"
     }
   },
   "version": 0.4
