@@ -1,0 +1,346 @@
+{
+  "last_node_id": 10,
+  "last_link_id": 10,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "AgnesTextNode",
+      "pos": [100, 80],
+      "size": [380, 260],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "expanded_prompt",
+          "type": "STRING",
+          "links": [1],
+          "slot_index": 0
+        }
+      ],
+      "title": "① Cinematic Prompt Expansion",
+      "properties": {
+        "color": "#7a4fcb",
+        "bgcolor": "#2a1a47"
+      },
+      "widgets_values": [
+        "A lone astronaut floating through a nebula",
+        "",
+        "You are a cinematic video prompt engineer. Expand the user's brief idea into a detailed, vivid, production-ready video prompt. Use the structure: [Subject] + [Action] + [Scene] + [Camera Movement] + [Lighting] + [Style]. Output only the expanded prompt, no preamble, no explanation, no labels.",
+        512,
+        0.7
+      ]
+    },
+    {
+      "id": 2,
+      "type": "AgnesTextNode",
+      "pos": [560, 60],
+      "size": [380, 300],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "user_prompt",
+          "type": "STRING",
+          "link": 1,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "expanded_prompt",
+          "type": "STRING",
+          "links": [2, 3, 8],
+          "slot_index": 0
+        }
+      ],
+      "title": "② Refinement Pass",
+      "properties": {
+        "color": "#6a3fbb",
+        "bgcolor": "#1a1040"
+      },
+      "widgets_values": [
+        "",
+        "",
+        "You are a senior director of photography. Take the given prompt and output ONLY the refined version — more specific about lighting ratios, camera lens type (e.g. '35mm anamorphic', '100mm macro'), film grain, color grading style (e.g. 'teal-and-orange', 'desaturated cold'), and depth of field. No preamble, no labels.",
+        512,
+        0.5
+      ]
+    },
+    {
+      "id": 3,
+      "type": "AgnesVideoGenerateNode",
+      "pos": [1040, 40],
+      "size": [420, 380],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": 2,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [],
+      "title": "③ Scene 1 — Nebula Entrance\n(441 frames, cinematic slow pan)",
+      "properties": {
+        "color": "#3f7a4f",
+        "bgcolor": "#0a3020"
+      },
+      "widgets_values": [
+        "",
+        "",
+        768,
+        1152,
+        441,
+        24,
+        10,
+        1800,
+        "output"
+      ]
+    },
+    {
+      "id": 4,
+      "type": "AgnesVideoGenerateNode",
+      "pos": [1040, 500],
+      "size": [420, 380],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": 3,
+          "slot_index": 0
+        },
+        {
+          "name": "image",
+          "type": "STRING",
+          "link": null,
+          "slot_index": 1
+        }
+      ],
+      "outputs": [],
+      "title": "④ Scene 2 — Black Hole Transition\n(image-to-video, 241 frames)",
+      "properties": {
+        "color": "#7a4f3f",
+        "bgcolor": "#402010"
+      },
+      "widgets_values": [
+        "",
+        "",
+        768,
+        1152,
+        241,
+        24,
+        10,
+        1800,
+        "output"
+      ]
+    },
+    {
+      "id": 5,
+      "type": "AgnesTextNode",
+      "pos": [560, 460],
+      "size": [380, 300],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "user_prompt",
+          "type": "STRING",
+          "link": 8,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "expanded_prompt",
+          "type": "STRING",
+          "links": [4],
+          "slot_index": 0
+        }
+      ],
+      "title": "⑤ Scene 2 Prompt Variant\n(altered continuation)",
+      "properties": {
+        "color": "#5a2fab",
+        "bgcolor": "#181030"
+      },
+      "widgets_values": [
+        "",
+        "",
+        "You are a cinematic video prompt engineer. Take the given cinematic prompt and rewrite it for a DIFFERENT scene that CONTINUES the narrative. The new scene should transition from the original setting to a new one (e.g. nebula → black hole, city → space). Keep all the cinematic quality but change the subject, action, and environment. Use the structure: [Subject] + [Action] + [Scene] + [Camera Movement] + [Lighting] + [Style]. Output only the new prompt.",
+        512,
+        0.8
+      ]
+    },
+    {
+      "id": 6,
+      "type": "AgnesVideoGenerateNode",
+      "pos": [1520, 500],
+      "size": [420, 380],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": 4,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [],
+      "title": "⑥ Scene 3 — Cosmic Climax\n(image-to-video, 241 frames)",
+      "properties": {
+        "color": "#3f4f7a",
+        "bgcolor": "#101840"
+      },
+      "widgets_values": [
+        "",
+        "",
+        768,
+        1152,
+        241,
+        24,
+        10,
+        1800,
+        "output"
+      ]
+    },
+    {
+      "id": 7,
+      "type": "R3 RandomSeed",
+      "pos": [100, 420],
+      "size": [200, 120],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": null,
+          "slot_index": 0,
+          "label": "Seed"
+        }
+      ],
+      "title": "🎲 Global Seed",
+      "properties": {
+        "color": "#4a4a4a",
+        "bgcolor": "#2a2a2a"
+      },
+      "widgets_values": [123456789, true, "Random"]
+    },
+    {
+      "id": 8,
+      "type": "Note",
+      "pos": [100, 600],
+      "size": [680, 200],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Note",
+      "properties": {},
+      "values": [
+        "Multi-Scene Cinematic Pipeline\n\nFlow:\n  1. Agnes 2.0 Flash expands short prompt\n  2. Refinement pass adds DOF, lens, grading\n  3. Scene 1: Nebula entrance (441 frames, 18.4s)\n  4. Scene 2: Black hole transition (241 frames, 10s)\n  5. Scene 3: Cosmic climax (241 frames, 10s)\n\nTotal runtime: ~38 seconds\n\nEach scene can use the previous scene's\nlast frame as image-to-video input.\nConnect Scene 1 output → Scene 2 image,\nScene 2 output → Scene 3 image for seamless\ntransitions.\n\nExternal concat (FFmpeg/QuickTime) → final film."
+      ]
+    },
+    {
+      "id": 9,
+      "type": "Note",
+      "pos": [1520, 940],
+      "size": [680, 120],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Note",
+      "properties": {},
+      "values": [
+        "⚠️ Scenes are generated independently.\nTo chain them: extract last frame of\nScene N, paste as 'image' input of Scene N+1\nfor image-to-video continuity.\n\nOr use Scene 1 (text-to-video) as source\nfor Scene 2 and 3 (image-to-video)."
+      ]
+    },
+    {
+      "id": 10,
+      "type": "Note",
+      "pos": [560, 820],
+      "size": [680, 100],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Pro Tips",
+      "properties": {},
+      "values": [
+        "• Lower temperature (0.5) for refinement → more deterministic\n• Higher temperature (0.8) for scene variants → creative diversity\n• 441 frames = 18.4s, 241 frames = 10s, 121 frames = 5s\n• num_frames must be 8n+1 and ≤ 441 (rule enforced client-side)"
+      ]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 2, 0, "STRING"],
+    [2, 2, 0, 3, 0, "STRING"],
+    [3, 2, 0, 4, 0, "STRING"],
+    [4, 5, 0, 6, 0, "STRING"],
+    [8, 2, 0, 5, 0, "STRING"]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Agnes Prompt Engineering",
+      "bounding": [60, 20, 900, 380],
+      "color": "#7a4fcb"
+    },
+    {
+      "id": 2,
+      "title": "Scene 1 — Nebula",
+      "bounding": [1000, 0, 480, 440],
+      "color": "#3f7a4f"
+    },
+    {
+      "id": 3,
+      "title": "Scene 2 — Black Hole",
+      "bounding": [1000, 460, 480, 440],
+      "color": "#7a4f3f"
+    },
+    {
+      "id": 4,
+      "title": "Scene 3 — Cosmic Climax",
+      "bounding": [1480, 460, 480, 440],
+      "color": "#3f4f7a"
+    },
+    {
+      "id": 5,
+      "title": "Scene 2 Variant (Narrative Bridge)",
+      "bounding": [520, 420, 440, 360],
+      "color": "#5a2fab"
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.8,
+      "offset": [60, 40]
+    },
+    "info": {
+      "name": "Multi-Scene Cinematic Pipeline (3 Scenes)",
+      "author": "Agnes Workflow Generator",
+      "description": "Advanced multi-scene video pipeline: expand → refine → generate Scene 1 (text-to-video, 441 frames) → generate Scene 2 (image-to-video, 241 frames) → generate Scene 3 (image-to-video, 241 frames). Total ~38 seconds. Scenes can be chained via last-frame extraction for seamless narrative transitions.",
+      "copyright": "MIT",
+      "licence": "",
+      "date": "2026-06-04"
+    }
+  },
+  "version": 0.4
+}
