@@ -1,0 +1,10 @@
+.env
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.mp4
+*.png
+*.jpg
+outputs/
+.DS_Store

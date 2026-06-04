@@ -1,0 +1,97 @@
+{
+  "last_node_id": 2,
+  "last_link_id": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "AgnesTextNode",
+      "pos": [120, 120],
+      "size": [360, 240],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "expanded_prompt",
+          "type": "STRING",
+          "links": [1],
+          "slot_index": 0
+        }
+      ],
+      "title": "Agnes 2.0 Flash - Prompt Expansion",
+      "properties": {
+        "color": "#7a4fcb",
+        "bgcolor": "#2a1a47"
+      },
+      "widgets_values": [
+        "A cat walking on a beach at sunset",
+        "",
+        "You are a cinematic video prompt engineer. Expand the user's brief idea into a detailed, vivid, production-ready video prompt. Use the structure: [Subject] + [Action] + [Scene] + [Camera Movement] + [Lighting] + [Style]. Output only the expanded prompt, no preamble, no explanation, no labels.",
+        512,
+        0.7
+      ]
+    },
+    {
+      "id": 2,
+      "type": "AgnesVideoGenerateNode",
+      "pos": [620, 80],
+      "size": [400, 360],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": 1,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [],
+      "title": "Agnes Video V2.0 - Generate",
+      "properties": {
+        "color": "#7a4fcb",
+        "bgcolor": "#2a1a47"
+      },
+      "widgets_values": [
+        "",
+        "",
+        768,
+        1152,
+        121,
+        24,
+        10,
+        1800,
+        "outputs/agnes"
+      ]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 2, 0, "STRING"]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Agnes — Text → Video",
+      "bounding": [60, 40, 1000, 420],
+      "color": "#7a4fcb"
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.85,
+      "offset": [40, 60]
+    },
+    "info": {
+      "name": "Agnes Text → Video (2.0 Flash + V2.0)",
+      "author": "Agnes Workflow Generator",
+      "description": "Expand a short user prompt with Agnes 2.0 Flash, then generate a video with Agnes Video V2.0. Output: MP4 written to output_dir on the video node.",
+      "copyright": "",
+      "licence": "",
+      "date": "2026-06-04"
+    }
+  },
+  "version": 0.4
+}

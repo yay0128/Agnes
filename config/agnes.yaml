@@ -1,0 +1,145 @@
+# Agnes AI Configuration
+# Source: https://agnes-ai.com/doc/agnes-image-21-flash and https://agnes-ai.com/doc/agnes-video-v20
+
+base_url: https://apihub.agnes-ai.com/v1
+auth_header: "Authorization: Bearer ${AGNES_API_KEY}"
+content_type: application/json
+
+models:
+  image_2_1_flash:
+    name: agnes-image-2.1-flash
+    endpoint: /v1/images/generations
+    method: POST
+    sync: true
+    request_params:
+      - name: model
+        type: string
+        required: true
+        fixed_value: agnes-image-2.1-flash
+        description: Model identifier
+      - name: prompt
+        type: string
+        required: true
+        description: Text instruction for image generation or image editing
+      - name: size
+        type: string
+        required: false
+        default: 1024x768
+        description: Output image size, e.g. 1024x768
+      - name: extra_body
+        type: object
+        required: false
+        description: Additional parameters for advanced workflows
+        fields:
+          - name: image
+            type: array
+            required: false
+            description: Input image URLs for image-to-image generation
+          - name: response_format
+            type: string
+            required: false
+            default: url
+            description: Response format (url or b64_json)
+    pricing:
+      generated_images: 0.003 # USD per image (free during promo)
+
+  video_v2_0:
+    name: agnes-video-v2.0
+    create_endpoint: /v1/videos
+    retrieve_endpoint: /v1/videos/{task_id}
+    create_method: POST
+    retrieve_method: GET
+    sync: false # asynchronous task-based
+    task_poll_interval_seconds: 10
+    task_timeout_seconds: 1800
+    request_params:
+      - name: model
+        type: string
+        required: true
+        fixed_value: agnes-video-v2.0
+        description: Model identifier
+      - name: prompt
+        type: string
+        required: true
+        description: Text description of the video
+      - name: image
+        type: string
+        required: false
+        description: Input image URL (image-to-video)
+      - name: mode
+        type: string
+        required: false
+        description: Generation mode, e.g. ti2vid or keyframes
+      - name: height
+        type: integer
+        required: false
+        default: 768
+        description: Video height
+      - name: width
+        type: integer
+        required: false
+        default: 1152
+        description: Video width
+      - name: num_frames
+        type: integer
+        required: false
+        default: 121
+        constraints:
+          max: 441
+          rule: "8n + 1"
+          allowed_values: [81, 121, 161, 241, 441]
+        description: Frame count
+      - name: num_inference_steps
+        type: integer
+        required: false
+        description: Number of inference steps
+      - name: seed
+        type: integer
+        required: false
+        description: Random seed for reproducibility
+      - name: frame_rate
+        type: number
+        required: false
+        default: 24
+        range: [1, 60]
+        description: Video FPS
+      - name: negative_prompt
+        type: string
+        required: false
+        description: Negative prompt describing what to avoid
+      - name: extra_body.image
+        type: array
+        required: false
+        description: Input image URLs for multi-image video or keyframe mode
+      - name: extra_body.mode
+        type: string
+        required: false
+        description: Extra mode setting, e.g. keyframes
+    duration_guide:
+      formula: "seconds = num_frames / frame_rate"
+      recommendations:
+        - duration_5s:  { num_frames: 121, frame_rate: 24 }
+        - duration_10s: { num_frames: 241, frame_rate: 24 }
+        - duration_18s: { num_frames: 441, frame_rate: 24 }
+    task_statuses: [queued, in_progress, completed, failed]
+    response_fields:
+      - id
+      - object
+      - model
+      - status
+      - progress
+      - created_at
+      - completed_at
+      - video_url
+      - size
+      - seconds
+      - usage
+    pricing:
+      video_duration: 0.005 # USD per second (free during promo)
+
+error_codes:
+  400: "Invalid request. Check request parameters"
+  401: "Unauthorized. Check your API key"
+  404: "Task not found (video retrieve only)"
+  500: "Server error"
+  503: "Service busy. Retry later"
