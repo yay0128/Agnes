@@ -27,7 +27,8 @@ supports but is **not** part of the bundled ComfyUI workflow.
 ## Table of contents
 
 1. [Quick start — ComfyUI](#quick-start--comfyui)
-2. [Quick start — Python](#quick-start--python)
+2. [Quick start — Advanced multi-scene workflow](#quick-start--advanced-multi-scene-workflow)
+3. [Quick start — Python](#quick-start--python)
 3. [The ComfyUI integration (the main feature)](#the-comfyui-integration)
    - [What gets installed where](#what-gets-installed-where)
    - [Configuration (API key)](#configuration-api-key)
@@ -69,6 +70,73 @@ If you'd rather reach for it from the menu instead of dragging a file,
 the workflow is also pre-staged at
 `<ComfyUI>/user/default/workflows/Agnes_Text_to_Video.json` after step 1
 (see the "Standalone Python install" section below for the staging step).
+
+### Advanced multi-scene cinematic pipeline
+
+For a production-grade multi-scene workflow:
+
+```bash
+# Option A: Drag the file onto the canvas
+cp comfyui_workflow/workflow_advanced.json \
+   <ComfyUI>/user/default/workflows/Agnes_MultiScene_Cinematic_Pipeline.json
+
+# Option B: Run the one-command installer
+./comfyui_workflow/install.sh /path/to/ComfyUI
+```
+
+This stages **two** workflows at once (basic + advanced).
+
+**What the advanced workflow does:**
+
+```
+User Prompt (short idea)
+        │
+        ▼
+┌──────────────────────────────┐
+│ ① AgnesTextNode (2.0 Flash)   │  Expand → cinematic prompt A
+│    Cinematic Expansion         │
+└─────────┬────────────────────┘
+          │
+          ▼
+┌──────────────────────────────┐
+│ ② AgnesTextNode (2.0 Flash)   │  Refine → more specific lighting,
+│    Refinement Pass             │  lens type, color grading (temp 0.5)
+└─────────┬────────────┬───────┘
+          │            │
+          ▼            ▼
+  ┌──────────────┐  ┌─────────────────┐
+  │③ Scene 1     │  │⑤ Scene Variant  │
+  │ Nebula       │  │ (alt continuation│
+  │ 441 frames   │  │  for Scene 2)    │
+  │ text-to-video│  └────────┬─────────┘
+  └──────────────┘           │
+          │                  ▼
+          │            ┌─────────────────┐
+          │            │⑥ Scene 3         │
+          ▼            │ Cosmic Climax    │
+  ┌──────────────┐     │ 241 frames       │
+  │④ Scene 2     │     │ image-to-video   │
+  │ Black Hole   │     └─────────────────┘
+  │ 241 frames   │
+  │ image-to-video│
+  └──────────────┘
+
+  Total runtime: ~38 seconds
+  Scenes chain via last-frame extraction
+  (or use Scene 1 text-to-video as source
+   for Scenes 2+3 image-to-video)
+```
+
+| Feature | Detail |
+| --- | --- |
+| **Scene 1** | 441 frames (18.4s), text-to-video, slow cinematic pan |
+| **Scene 2** | 241 frames (10s), image-to-video, black hole transition |
+| **Scene 3** | 241 frames (10s), image-to-video, cosmic climax |
+| **Prompt pipeline** | Expand → Refine (temp 0.5) → Variant (temp 0.8) |
+| **Groups** | 5 color-coded groups for visual clarity |
+
+To chain scenes: extract the last frame of Scene N and paste it into
+Scene N+1's `image` widget for image-to-video continuity.
 
 ---
 
