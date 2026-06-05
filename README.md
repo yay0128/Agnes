@@ -29,6 +29,7 @@ supports but is **not** part of the bundled ComfyUI workflow.
 1. [Quick start — ComfyUI](#quick-start--comfyui)
 2. [Quick start — Advanced multi-scene workflow](#quick-start--advanced-multi-scene-workflow)
 3. [Quick start — Python](#quick-start--python)
+3.1. [Quick start — Douyin finance video](#quick-start--douyin-finance-video)
 4. [Usage guide](#usage-guide)
 5. [What makes the advanced workflow special](#what-makes-the-advanced-workflow-special)
 3. [The ComfyUI integration (the main feature)](#the-comfyui-integration)
@@ -139,6 +140,46 @@ User Prompt (short idea)
 
 To chain scenes: extract the last frame of Scene N and paste it into
 Scene N+1's `image` widget for image-to-video continuity.
+
+---
+
+## Quick start — Douyin finance video
+
+A complete 60-second Chinese finance explainer short video pipeline, modeled
+on the script "央行降息,钱去哪了?" (rate cut, where does the money go?).
+
+**What you get out of one click:**
+
+| # | Scene | Time | Frames | What it shows |
+| --- | --- | --- | --- | --- |
+| 1 | 钩子 | 0-3s | 81 | 央行降息大字 + 大楼 + 红色↓ |
+| 2 | 6 站路线图 | 8-30s | 441 | 央行→企业→楼市→股市→债市→存款 |
+| 3 | 蓝筹 vs 题材 | 30-37s | 161 | 左右分屏对比 |
+| 4 | 债市稳 | 37-42s | 121 | 金色堡垒 + 盾牌 |
+| 5 | 反转警示 | 45-60s | 241 | 焦虑 vs 加仓对比 |
+| 6 | 三条建议 | 60-75s | 241 | 1️⃣2️⃣3️⃣ 数字弹出 |
+| 7 | 结尾钩子 | 75-85s | 161 | 大喇叭 + 转发号召 |
+| 8 | 封面 | static | - | 9:16 竖屏 |
+| — | **Caption** | - | - | 自动生成口播脚本 |
+| | **Total runtime** | **60.3s** | | |
+
+**Style consistency** — the Style Director node (①) emits a locked
+visual identity (Klein blue + warm orange + flat 2.5D infographic) that
+every downstream scene adopts, so the 8 frames look like one video
+rather than 8 different images.
+
+**Use:**
+
+```bash
+cp comfyui_workflow/workflow_douyin_finance.json \
+   ~/Documents/ComfyUI/user/default/workflows/Agnes_Douyin_Finance_60s.json
+
+# Open ComfyUI in browser, drag in the file, Queue Prompt.
+# In ~20 minutes you have 7 video clips + 1 cover + 1 caption.
+```
+
+Then concatenate the 7 MP4s with `ffmpeg -f concat -i filelist.txt -c copy final.mp4`
+and overlay the caption in CapCut/剪映 with the cover as the thumbnail.
 
 ---
 

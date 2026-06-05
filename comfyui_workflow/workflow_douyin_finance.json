@@ -1,0 +1,748 @@
+{
+  "last_node_id": 17,
+  "last_link_id": 7,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "AgnesTextNode",
+      "pos": [80, 100],
+      "size": [420, 280],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "expanded_prompt",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 0
+        }
+      ],
+      "title": "① Style Director — 统一视觉风格",
+      "properties": {
+        "color": "#7a4fcb",
+        "bgcolor": "#2a1a47"
+      },
+      "widgets_values": [
+        "8 个分镜的关键视觉描述关键词(用空格分隔,例如:央行降息、钱搬去哪里、股票、债市、警告、建议、结尾)",
+        "",
+        "You are a visual style director for a Chinese finance explainer short video (Douyin / 视频号 style). The user will provide 8 short keyword phrases, one per scene. Your job is to output a SINGLE style guide string that locks the visual identity across all 8 scenes. The style guide MUST specify: (1) color palette — Klein blue primary (#002FA7), warm orange accent (#FF6B35), off-white background (#FAF7F2), deep navy text (#0A1F44); (2) typography — modern sans-serif Chinese font, large bold for headlines, 1-2 words per headline; (3) visual style — flat infographic, 2.5D isometric elements, no photorealism, slight grain texture, professional financial channel aesthetic; (4) composition — centered main subject, 20%% margin, single focal point per scene, no busy backgrounds; (5) character style — flat illustrated figures when humans are needed, no photos. Output ONLY the style guide, no preamble, no explanation, no examples.",
+        512,
+        0.5
+      ]
+    },
+    {
+      "id": 2,
+      "type": "AgnesImageNode",
+      "pos": [620, 60],
+      "size": [400, 320],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "local_path",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 0
+        },
+        {
+          "name": "public_url",
+          "type": "STRING",
+          "links": [1],
+          "slot_index": 1
+        },
+        {
+          "name": "edit_instruction",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 2
+        }
+      ],
+      "title": "② Image 1 — 钩子(0-3s)央行降息",
+      "properties": {
+        "color": "#cf3f3f",
+        "bgcolor": "#401010"
+      },
+      "widgets_values": [
+        "中国央行大楼正面构图,大楼顶部巨大的红色向下箭头(降息),大楼基座处一池金币,金币正从池中飞散消失,上方巨大粗体汉字「降息」,克莱因蓝主色调 + 红色警示色,扁平信息图风格,2.5D等距视角,无照片感,微弱颗粒纹理,中央构图,20%%留白。",
+        "1024x768",
+        "",
+        "",
+        "url",
+        "outputs/douyin",
+        false
+      ]
+    },
+    {
+      "id": 3,
+      "type": "AgnesVideoGenerateNode",
+      "pos": [1080, 60],
+      "size": [400, 340],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": null,
+          "slot_index": 0
+        },
+        {
+          "name": "image",
+          "type": "STRING",
+          "link": 1,
+          "slot_index": 1
+        }
+      ],
+      "outputs": [],
+      "title": "③ Video 1 — 钩子动效(3s)",
+      "properties": {
+        "color": "#cf3f3f",
+        "bgcolor": "#401010"
+      },
+      "widgets_values": [
+        "",
+        "",
+        768,
+        1152,
+        81,
+        24,
+        10,
+        1800,
+        "outputs/douyin"
+      ]
+    },
+    {
+      "id": 4,
+      "type": "AgnesImageNode",
+      "pos": [1540, 60],
+      "size": [400, 320],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "local_path",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 0
+        },
+        {
+          "name": "public_url",
+          "type": "STRING",
+          "links": [2],
+          "slot_index": 1
+        },
+        {
+          "name": "edit_instruction",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 2
+        }
+      ],
+      "title": "④ Image 2 — 6站路线图(8-30s)",
+      "properties": {
+        "color": "#3f7a4f",
+        "bgcolor": "#103020"
+      },
+      "widgets_values": [
+        "扁平信息图,六个圆圈节点用箭头串联成一条横向传送带,六个节点依次代表:央行(起点)→ 企业 → 楼市 → 股市 → 债市 → 你的存款(终点),每两个节点之间有金色硬币流动,终点节点用红色表示(钱在流失),克莱因蓝主色调 + 金色辅色,粗体汉字标签,中央构图,扁平2.5D,无照片感,微弱颗粒纹理。",
+        "1024x768",
+        "",
+        "",
+        "url",
+        "outputs/douyin",
+        false
+      ]
+    },
+    {
+      "id": 5,
+      "type": "AgnesVideoGenerateNode",
+      "pos": [2000, 60],
+      "size": [400, 340],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": null,
+          "slot_index": 0
+        },
+        {
+          "name": "image",
+          "type": "STRING",
+          "link": 2,
+          "slot_index": 1
+        }
+      ],
+      "outputs": [],
+      "title": "⑤ Video 2 — 路线图轮播(22s, 用 441 帧)",
+      "properties": {
+        "color": "#3f7a4f",
+        "bgcolor": "#103020"
+      },
+      "widgets_values": [
+        "",
+        "",
+        768,
+        1152,
+        441,
+        24,
+        10,
+        1800,
+        "outputs/douyin"
+      ]
+    },
+    {
+      "id": 6,
+      "type": "AgnesImageNode",
+      "pos": [620, 460],
+      "size": [400, 320],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "local_path",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 0
+        },
+        {
+          "name": "public_url",
+          "type": "STRING",
+          "links": [3],
+          "slot_index": 1
+        },
+        {
+          "name": "edit_instruction",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 2
+        }
+      ],
+      "title": "⑥ Image 3 — 蓝筹 vs 题材(30-37s)",
+      "properties": {
+        "color": "#3f6a7a",
+        "bgcolor": "#103040"
+      },
+      "widgets_values": [
+        "扁平信息图,左右分屏对比:左侧是「高股息蓝筹」(一摞稳如泰山的银行股+电力股+中特估图标,顶端金光闪闪,标签「钱流向这里」),右侧是「题材股」(一个上下剧烈波动的K线图+一个被踩扁的小图标,标签「钱不碰这里」),中央用一道金色光幕分开,克莱因蓝主色调,粗体汉字标签,扁平2.5D,无照片感,微弱颗粒纹理。",
+        "1024x768",
+        "",
+        "",
+        "url",
+        "outputs/douyin",
+        false
+      ]
+    },
+    {
+      "id": 7,
+      "type": "AgnesVideoGenerateNode",
+      "pos": [1080, 460],
+      "size": [400, 340],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": null,
+          "slot_index": 0
+        },
+        {
+          "name": "image",
+          "type": "STRING",
+          "link": 3,
+          "slot_index": 1
+        }
+      ],
+      "outputs": [],
+      "title": "⑦ Video 3 — 股市对比动效(7s)",
+      "properties": {
+        "color": "#3f6a7a",
+        "bgcolor": "#103040"
+      },
+      "widgets_values": [
+        "",
+        "",
+        768,
+        1152,
+        161,
+        24,
+        10,
+        1800,
+        "outputs/douyin"
+      ]
+    },
+    {
+      "id": 8,
+      "type": "AgnesImageNode",
+      "pos": [1540, 460],
+      "size": [400, 320],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "local_path",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 0
+        },
+        {
+          "name": "public_url",
+          "type": "STRING",
+          "links": [4],
+          "slot_index": 1
+        },
+        {
+          "name": "edit_instruction",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 2
+        }
+      ],
+      "title": "⑧ Image 4 — 债市稳(37-42s)",
+      "properties": {
+        "color": "#7a6a3f",
+        "bgcolor": "#302010"
+      },
+      "widgets_values": [
+        "扁平信息图,中央是一座金色小堡垒(代表银行理财/纯债基金的安全感),堡垒周围有散落的金币和缓慢上升的小箭头,顶部一个圆形盾牌标志(防御感),底部粗体汉字「稳稳的幸福」,克莱因蓝主色调 + 金色辅色,扁平2.5D,无照片感,微弱颗粒纹理,中央构图,20%%留白。",
+        "1024x768",
+        "",
+        "",
+        "url",
+        "outputs/douyin",
+        false
+      ]
+    },
+    {
+      "id": 9,
+      "type": "AgnesVideoGenerateNode",
+      "pos": [2000, 460],
+      "size": [400, 340],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": null,
+          "slot_index": 0
+        },
+        {
+          "name": "image",
+          "type": "STRING",
+          "link": 4,
+          "slot_index": 1
+        }
+      ],
+      "outputs": [],
+      "title": "⑨ Video 4 — 债市堡垒动效(5s)",
+      "properties": {
+        "color": "#7a6a3f",
+        "bgcolor": "#302010"
+      },
+      "widgets_values": [
+        "",
+        "",
+        768,
+        1152,
+        121,
+        24,
+        10,
+        1800,
+        "outputs/douyin"
+      ]
+    },
+    {
+      "id": 10,
+      "type": "AgnesImageNode",
+      "pos": [620, 860],
+      "size": [400, 320],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "local_path",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 0
+        },
+        {
+          "name": "public_url",
+          "type": "STRING",
+          "links": [5],
+          "slot_index": 1
+        },
+        {
+          "name": "edit_instruction",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 2
+        }
+      ],
+      "title": "⑩ Image 5 — 反转警示(45-60s)",
+      "properties": {
+        "color": "#cf3f3f",
+        "bgcolor": "#401010"
+      },
+      "widgets_values": [
+        "扁平信息图,左右分屏对比:左侧红色背景,一个焦虑的小人(抱着钱包,头顶有红色问号/感叹号,标签「存款的人 慢性失血」),右侧绿色背景,一个微笑的小人在加仓买入(标签「借杠杆的人 成本变低」),中央用金色竖线分开,顶部巨大红色横条「同样是降息,结果不同」,扁平2.5D,粗体汉字标签,无照片感,微弱颗粒纹理。",
+        "1024x768",
+        "",
+        "",
+        "url",
+        "outputs/douyin",
+        false
+      ]
+    },
+    {
+      "id": 11,
+      "type": "AgnesVideoGenerateNode",
+      "pos": [1080, 860],
+      "size": [400, 340],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": null,
+          "slot_index": 0
+        },
+        {
+          "name": "image",
+          "type": "STRING",
+          "link": 5,
+          "slot_index": 1
+        }
+      ],
+      "outputs": [],
+      "title": "⑪ Video 5 — 反转动效(15s)",
+      "properties": {
+        "color": "#cf3f3f",
+        "bgcolor": "#401010"
+      },
+      "widgets_values": [
+        "",
+        "",
+        768,
+        1152,
+        241,
+        24,
+        10,
+        1800,
+        "outputs/douyin"
+      ]
+    },
+    {
+      "id": 12,
+      "type": "AgnesImageNode",
+      "pos": [1540, 860],
+      "size": [400, 320],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "local_path",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 0
+        },
+        {
+          "name": "public_url",
+          "type": "STRING",
+          "links": [6],
+          "slot_index": 1
+        },
+        {
+          "name": "edit_instruction",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 2
+        }
+      ],
+      "title": "⑫ Image 6 — 三条建议(60-75s)",
+      "properties": {
+        "color": "#3f7a4f",
+        "bgcolor": "#103020"
+      },
+      "widgets_values": [
+        "扁平信息图,三个大数字「1️⃣ 2️⃣ 3️⃣」从屏幕底部依次弹出,每个数字旁边有粗体汉字建议:1️⃣ 优先还高息房贷(旁边画一个房贷本+剪刀),2️⃣ 钱别死存银行(旁边画一个金币从银行标志里挪到大额存单/纯债基金),3️⃣ 想进股市只买高股息(旁边画高股息蓝筹图标),克莱因蓝主色调 + 暖橙辅色,扁平2.5D,粗体汉字标签,中央构图,无照片感,微弱颗粒纹理。",
+        "1024x768",
+        "",
+        "",
+        "url",
+        "outputs/douyin",
+        false
+      ]
+    },
+    {
+      "id": 13,
+      "type": "AgnesVideoGenerateNode",
+      "pos": [2000, 860],
+      "size": [400, 340],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": null,
+          "slot_index": 0
+        },
+        {
+          "name": "image",
+          "type": "STRING",
+          "link": 6,
+          "slot_index": 1
+        }
+      ],
+      "outputs": [],
+      "title": "⑬ Video 6 — 建议动效(15s)",
+      "properties": {
+        "color": "#3f7a4f",
+        "bgcolor": "#103020"
+      },
+      "widgets_values": [
+        "",
+        "",
+        768,
+        1152,
+        241,
+        24,
+        10,
+        1800,
+        "outputs/douyin"
+      ]
+    },
+    {
+      "id": 14,
+      "type": "AgnesImageNode",
+      "pos": [620, 1260],
+      "size": [400, 320],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "local_path",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 0
+        },
+        {
+          "name": "public_url",
+          "type": "STRING",
+          "links": [7],
+          "slot_index": 1
+        },
+        {
+          "name": "edit_instruction",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 2
+        }
+      ],
+      "title": "⑭ Image 7 — 结尾钩子(75-85s)",
+      "properties": {
+        "color": "#cf3f3f",
+        "bgcolor": "#401010"
+      },
+      "widgets_values": [
+        "扁平信息图,中央是一个大喇叭/扩音器图标(代表「建议转发给闺蜜」),周围散落几个社交分享图标(微信/微博/抖音),顶部粗体汉字「低利率时代 存款是慢性失血 投资是主动出击」,底部一个关注按钮的简化图形 + 一个小箭头指向「下期:5个危险信号,告诉你低利率什么时候结束」,克莱因蓝主色调 + 红色警示色,扁平2.5D,粗体汉字标签,中央构图,无照片感,微弱颗粒纹理。",
+        "1024x768",
+        "",
+        "",
+        "url",
+        "outputs/douyin",
+        false
+      ]
+    },
+    {
+      "id": 15,
+      "type": "AgnesVideoGenerateNode",
+      "pos": [1080, 1260],
+      "size": [400, 340],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": null,
+          "slot_index": 0
+        },
+        {
+          "name": "image",
+          "type": "STRING",
+          "link": 7,
+          "slot_index": 1
+        }
+      ],
+      "outputs": [],
+      "title": "⑮ Video 7 — 结尾动效(10s)",
+      "properties": {
+        "color": "#cf3f3f",
+        "bgcolor": "#401010"
+      },
+      "widgets_values": [
+        "",
+        "",
+        768,
+        1152,
+        161,
+        24,
+        10,
+        1800,
+        "outputs/douyin"
+      ]
+    },
+    {
+      "id": 16,
+      "type": "AgnesImageNode",
+      "pos": [1540, 1260],
+      "size": [400, 320],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "local_path",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 0
+        },
+        {
+          "name": "public_url",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 1
+        },
+        {
+          "name": "edit_instruction",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 2
+        }
+      ],
+      "title": "⑯ Image 8 — 封面(9:16 静帧)",
+      "properties": {
+        "color": "#7a4fcb",
+        "bgcolor": "#2a1a47"
+      },
+      "widgets_values": [
+        "9:16 竖屏封面图,中央一个大型信息图式插画:上方是「央行降息」的红色大字,中央是一条6站的资金流向链条图(央行→企业→楼市→股市→债市→存款),链条用粗箭头连接,周围点缀金色硬币,底部一个红色对勾+一个蓝色叉号对比(标注「焦虑 vs 加仓」),整体克莱因蓝主色调,扁平2.5D,粗体汉字,高对比度,适合小尺寸手机屏幕阅读,无照片感,微弱颗粒纹理,顶部留20%%给标题叠加。",
+        "1024x1024",
+        "",
+        "",
+        "url",
+        "outputs/douyin",
+        false
+      ]
+    },
+    {
+      "id": 17,
+      "type": "AgnesTextNode",
+      "pos": [2000, 1260],
+      "size": [400, 280],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "⑰ Caption Generator — 自动口播脚本",
+      "properties": {
+        "color": "#7a4fcb",
+        "bgcolor": "#2a1a47"
+      },
+      "widgets_values": [
+        "央行又降息了,但你的钱正在悄悄变少。",
+        "",
+        "You are a Chinese finance video caption writer. The user gives you the visual description of one scene. Output ONLY the voiceover caption that the host should speak during this scene. Use spoken Chinese, 1-2 short sentences (15-30 字), punchy and conversational. No quotes, no labels, no preamble. End with a hook or a pause marker if appropriate.",
+        256,
+        0.7
+      ]
+    }
+  ],
+  "links": [
+    [1, 2, 1, 3, 1, "STRING"],
+    [2, 4, 1, 5, 1, "STRING"],
+    [3, 6, 1, 7, 1, "STRING"],
+    [4, 8, 1, 9, 1, "STRING"],
+    [5, 10, 1, 11, 1, "STRING"],
+    [6, 12, 1, 13, 1, "STRING"],
+    [7, 14, 1, 15, 1, "STRING"]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "🎬 Style Direction",
+      "bounding": [40, 60, 480, 360],
+      "color": "#7a4fcb"
+    },
+    {
+      "id": 2,
+      "title": "🎞️ Scenes 1-2 (钩子 + 路线图)",
+      "bounding": [580, 20, 1880, 420],
+      "color": "#cf3f3f"
+    },
+    {
+      "id": 3,
+      "title": "🎞️ Scenes 3-4 (股市 + 债市)",
+      "bounding": [580, 420, 1880, 420],
+      "color": "#3f6a7a"
+    },
+    {
+      "id": 4,
+      "title": "🎞️ Scenes 5-6 (反转 + 建议)",
+      "bounding": [580, 820, 1880, 420],
+      "color": "#3f7a4f"
+    },
+    {
+      "id": 5,
+      "title": "🎞️ Scene 7 + 封面 + 口播生成",
+      "bounding": [580, 1220, 1880, 420],
+      "color": "#cf3f3f"
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.55,
+      "offset": [60, 40]
+    },
+    "info": {
+      "name": "抖音/视频号 财经口播 — 8 场景视频流水线",
+      "author": "Agnes Workflow Generator",
+      "description": "Generates 8 stylistically consistent scenes (1024x768) for a 60-90s Chinese finance explainer short video, plus a 1:1 cover frame and a voiceover caption generator. Style Director node defines the locked visual identity (Klein blue, warm orange, flat 2.5D infographic) that all 8 scenes share. Each scene image is auto-uploaded to 0x0.st, then fed into a dedicated video node that animates the still. Total video length: ~77 seconds (3+22+7+5+15+15+10 = 77s).",
+      "copyright": "MIT",
+      "licence": "",
+      "date": "2026-06-05"
+    }
+  },
+  "version": 0.4
+}
