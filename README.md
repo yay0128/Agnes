@@ -109,31 +109,31 @@ User Prompt (short idea)
   ┌──────────────┐  ┌─────────────────┐
   │③ Scene 1     │  │⑤ Scene Variant  │
   │ Nebula       │  │ (alt continuation│
-  │ 441 frames   │  │  for Scene 2)    │
+  │ 121 frames   │  │  for Scene 2)    │
   │ text-to-video│  └────────┬─────────┘
   └──────────────┘           │
           │                  ▼
           │            ┌─────────────────┐
           │            │⑥ Scene 3         │
           ▼            │ Cosmic Climax    │
-  ┌──────────────┐     │ 241 frames       │
+  ┌──────────────┐     │ 121 frames       │
   │④ Scene 2     │     │ image-to-video   │
   │ Black Hole   │     └─────────────────┘
-  │ 241 frames   │
+  │ 121 frames   │
   │ image-to-video│
   └──────────────┘
 
-  Total runtime: ~38 seconds
-  Scenes chain via last-frame extraction
-  (or use Scene 1 text-to-video as source
-   for Scenes 2+3 image-to-video)
+  Total runtime: ~15 seconds (defaults).
+  Crank num_frames to 441 for a 56-second epic,
+  but be aware: more frames = more server-side GPU memory,
+  and Agnes's shared GPU can OOM on the largest jobs.
 ```
 
 | Feature | Detail |
 | --- | --- |
-| **Scene 1** | 441 frames (18.4s), text-to-video, slow cinematic pan |
-| **Scene 2** | 241 frames (10s), image-to-video, black hole transition |
-| **Scene 3** | 241 frames (10s), image-to-video, cosmic climax |
+| **Scene 1** | 121 frames (5s), text-to-video, slow cinematic pan |
+| **Scene 2** | 121 frames (5s), image-to-video, black hole transition |
+| **Scene 3** | 121 frames (5s), image-to-video, cosmic climax |
 | **Prompt pipeline** | Expand → Refine (temp 0.5) → Variant (temp 0.8) |
 | **Groups** | 5 color-coded groups for visual clarity |
 
@@ -535,9 +535,9 @@ You'll see **10 nodes** arranged across **5 color-coded groups**:
 
 ```
 🟣  Purple  — Agnes Prompt Engineering (3 text nodes)
-🟢  Green   — Scene 1: Nebula entrance (text-to-video, 441 frames)
-🟠  Orange  — Scene 2: Black hole transition (image-to-video, 241 frames)
-🔵  Blue    — Scene 3: Cosmic climax (image-to-video, 241 frames)
+🟢  Green   — Scene 1: Nebula entrance (text-to-video, 121 frames)
+🟠  Orange  — Scene 2: Black hole transition (image-to-video, 121 frames)
+🔵  Blue    — Scene 3: Cosmic climax (image-to-video, 121 frames)
 🟪  Violet  — Scene 2 variant (narrative bridge)
 ```
 

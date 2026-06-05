@@ -86,7 +86,7 @@
         }
       ],
       "outputs": [],
-      "title": "③ Scene 1 — Nebula Entrance\n(441 frames, cinematic slow pan)",
+      "title": "③ Scene 1 — Nebula Entrance\n(121 frames, 5s)",
       "properties": {
         "color": "#3f7a4f",
         "bgcolor": "#0a3020"
@@ -96,7 +96,7 @@
         "",
         768,
         1152,
-        441,
+        121,
         24,
         10,
         1800,
@@ -126,7 +126,7 @@
         }
       ],
       "outputs": [],
-      "title": "④ Scene 2 — Black Hole Transition\n(image-to-video, 241 frames)",
+      "title": "④ Scene 2 — Black Hole Transition\n(image-to-video, 121 frames)",
       "properties": {
         "color": "#7a4f3f",
         "bgcolor": "#402010"
@@ -197,7 +197,7 @@
         }
       ],
       "outputs": [],
-      "title": "⑥ Scene 3 — Cosmic Climax\n(image-to-video, 241 frames)",
+      "title": "⑥ Scene 3 — Cosmic Climax\n(image-to-video, 121 frames)",
       "properties": {
         "color": "#3f4f7a",
         "bgcolor": "#101840"
@@ -207,7 +207,7 @@
         "",
         768,
         1152,
-        241,
+        121,
         24,
         10,
         1800,

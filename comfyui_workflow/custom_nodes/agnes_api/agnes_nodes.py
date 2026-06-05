@@ -342,6 +342,7 @@ class AgnesTextNode:
                 "temperature": temperature,
             },
             api_key=key,
+            max_attempts=3,  # text endpoint is fast; 3 attempts is plenty
         )
         content = data["choices"][0]["message"]["content"].strip()
         usage = data.get("usage", {})
@@ -358,8 +359,67 @@ class AgnesTextNode:
 # ---------------------------------------------------------------------------
 
 
+# Server-side failure modes that may resolve on their own (shared GPU
+# resources, transient GPU contention).  We retry the entire pipeline
+# (new task) for these instead of failing hard.
+_RETRYABLE_SERVER_ERRORS = (
+    "cuda out of memory",
+    "out of memory",
+    "oom",
+    "gpu memory",
+    "resource exhausted",
+    "service unavailable",
+    "internal server error",
+)
+
+
+def _is_retryable_server_error(task_info: dict) -> bool:
+    """True if the server-side failure is the kind that may resolve on retry.
+
+    We don't retry on every 500 — some are deterministic (bad prompt, model
+    bug). But transient resource exhaustion (CUDA OOM, GPU memory pressure)
+    is shared across all tenants, so a 60-90s wait usually clears it.
+    """
+    error = task_info.get("error") or {}
+    message = (error.get("message") or "").lower()
+    code = str(error.get("code") or "")
+    if code in {"500", "502", "503", "504"}:
+        return any(marker in message for marker in _RETRYABLE_SERVER_ERRORS)
+    return False
+
+
+def _humanize_task_failure(task_info: dict) -> str:
+    """Extract the most useful part of a failed task response.
+
+    The raw response includes the full task object with timestamps, IDs,
+    and a JSON error blob. 90% of the time the user just wants to know
+    "why did it fail" — pull out the error message and the task ID.
+    """
+    task_id = task_info.get("id", "<unknown>")
+    error = task_info.get("error") or {}
+    msg = error.get("message", "<no error message>")
+    code = error.get("code", "?")
+    return f"task {task_id} failed ({code}): {msg}"
+
+
 class AgnesVideoGenerateNode:
-    """Create a video task, poll until complete, and download the result."""
+    """Create a video task, poll until complete, and download the result.
+
+    Features:
+      - Smart retry: exponential backoff with jitter on transient network
+        and HTTP errors (covered in _post_with_retry / _get_with_retry).
+      - GPU OOM auto-retry: if the server reports CUDA out of memory, the
+        shared GPU may be released by another tenant in a minute. We
+        automatically re-submit up to 2 times before giving up.
+      - Friendly errors: parses the error blob and surfaces the message
+        instead of dumping the full task object.
+    """
+
+    # How many times to retry the entire pipeline on a server-side
+    # resource-exhaustion error. 2 retries × ~60-90s backoff is enough
+    # for the GPU to free up under normal load.
+    SERVER_RETRY_MAX = 2
+    SERVER_RETRY_BACKOFF = 60  # seconds between server-side retries
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -378,7 +438,8 @@ class AgnesVideoGenerateNode:
                 ),
                 "height": ("INT", {"default": 768, "min": 256, "max": 2048, "step": 64}),
                 "width": ("INT", {"default": 1152, "min": 256, "max": 2048, "step": 64}),
-                "num_frames": ("INT", {"default": 121, "min": 81, "max": 441, "step": 8}),
+                "num_frames": ("INT", {"default": 121, "min": 81, "max": 441, "step": 8,
+                                        "tooltip": "121=5s, 241=10s, 441=18.4s. Larger values need more GPU memory server-side."}),
                 "frame_rate": ("INT", {"default": 24, "min": 1, "max": 60}),
                 "poll_interval": ("INT", {"default": 10, "min": 1, "max": 60}),
                 "max_wait": ("INT", {"default": 1800, "min": 60, "max": 7200}),
@@ -392,39 +453,22 @@ class AgnesVideoGenerateNode:
     CATEGORY = "Agnes/video"
     OUTPUT_NODE = True
 
-    def generate(
+    def _run_pipeline(
         self,
-        prompt: str,
-        api_key: str = "",
-        image: str = "",
-        height: int = 768,
-        width: int = 1152,
-        num_frames: int = 121,
-        frame_rate: int = 24,
-        poll_interval: int = 10,
-        max_wait: int = 1800,
-        output_dir: str = "outputs/agnes",
-    ) -> tuple[str]:
-        if num_frames not in ALLOWED_FRAMES:
-            raise ValueError(
-                f"num_frames must be in {ALLOWED_FRAMES} (rule 8n+1, max 441), got {num_frames}"
-            )
+        key: str,
+        payload: dict,
+        num_frames: int,
+        max_wait: int,
+        poll_interval: int,
+        output_dir: str,
+    ) -> str:
+        """Single pipeline run: create → poll → download. Returns output path.
 
-        key = _resolve_key(api_key)
-        headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-
+        Raises RuntimeError on hard failure. _generate() is responsible
+        for deciding whether to call this again on server-side resource
+        exhaustion errors.
+        """
         # 1) Create task
-        payload: dict[str, Any] = {
-            "model": VIDEO_MODEL,
-            "prompt": prompt,
-            "height": height,
-            "width": width,
-            "num_frames": num_frames,
-            "frame_rate": frame_rate,
-        }
-        if image.strip():
-            payload["image"] = image.strip()
-
         task = _post_with_retry("/videos", payload, api_key=key)
         task_id = task.get("id") or task.get("task_id")
         if not task_id:
@@ -437,14 +481,12 @@ class AgnesVideoGenerateNode:
         # 2) Poll
         start = time.monotonic()
         deadline = start + max_wait
-        last: dict[str, Any] = {}
+        last: dict = {}
         while time.monotonic() < deadline:
             try:
                 last = _get_with_retry(f"/videos/{task_id}", api_key=key)
             except RuntimeError as e:
-                # _get_with_retry already printed the network errors with backoff.
-                # If we still can't get a response, treat this poll as a miss
-                # and continue the loop (we still have time before deadline).
+                # Treat poll miss as "still trying" — we have time left
                 print(f"[AgnesVideoGenerateNode] poll failed: {e}, continuing...")
                 time.sleep(poll_interval)
                 continue
@@ -457,14 +499,19 @@ class AgnesVideoGenerateNode:
             if status == "completed":
                 break
             if status == "failed":
-                raise RuntimeError(f"Video task {task_id} failed: {last}")
+                # Don't raise here — return the failure so _generate can
+                # decide whether to retry the whole pipeline.
+                # Make sure the task_id is set in the humanized message,
+                # even if the upstream response omits it.
+                last.setdefault("id", task_id)
+                raise RuntimeError(_humanize_task_failure(last))
             time.sleep(poll_interval)
         else:
             raise RuntimeError(
                 f"Video task {task_id} did not complete within {max_wait}s"
             )
 
-        # 3) Download (with smart retry for transient network errors)
+        # 3) Download
         video_url = last.get("video_url") or last.get("remixed_from_video_id")
         if not video_url:
             raise RuntimeError(f"No video_url in response: {last}")
@@ -473,12 +520,12 @@ class AgnesVideoGenerateNode:
         filename = f"agnes_video_{task_id}.mp4"
         out_path = os.path.abspath(os.path.join(output_dir, filename))
 
-        # Download with retry.  We delete a partial file on failure so the
-        # next attempt starts clean.
+        # Streaming download. 5 min connect/read timeout is enough for
+        # typical MP4s (1-5 MB). Larger outputs may need bigger timeouts.
         last_exc: Exception | None = None
         for attempt in range(3):
             try:
-                with requests.get(video_url, stream=True, timeout=600) as r:
+                with requests.get(video_url, stream=True, timeout=(30, 300)) as r:
                     r.raise_for_status()
                     with open(out_path, "wb") as f:
                         for chunk in r.iter_content(chunk_size=1 << 16):
@@ -508,8 +555,76 @@ class AgnesVideoGenerateNode:
 
         size_mb = os.path.getsize(out_path) / (1024 * 1024)
         print(f"[AgnesVideoGenerateNode] saved {size_mb:.2f} MB to {out_path}")
+        return out_path
 
-        return (out_path,)
+    def generate(
+        self,
+        prompt: str,
+        api_key: str = "",
+        image: str = "",
+        height: int = 768,
+        width: int = 1152,
+        num_frames: int = 121,
+        frame_rate: int = 24,
+        poll_interval: int = 10,
+        max_wait: int = 1800,
+        output_dir: str = "outputs/agnes",
+    ) -> tuple[str]:
+        if num_frames not in ALLOWED_FRAMES:
+            raise ValueError(
+                f"num_frames must be in {ALLOWED_FRAMES} (rule 8n+1, max 441), got {num_frames}"
+            )
+
+        key = _resolve_key(api_key)
+
+        payload: dict[str, Any] = {
+            "model": VIDEO_MODEL,
+            "prompt": prompt,
+            "height": height,
+            "width": width,
+            "num_frames": num_frames,
+            "frame_rate": frame_rate,
+        }
+        if image.strip():
+            payload["image"] = image.strip()
+
+        # Pipeline loop with server-side retry for resource exhaustion.
+        last_err: Exception | None = None
+        for server_attempt in range(self.SERVER_RETRY_MAX + 1):
+            try:
+                path = self._run_pipeline(
+                    key=key,
+                    payload=payload,
+                    num_frames=num_frames,
+                    max_wait=max_wait,
+                    poll_interval=poll_interval,
+                    output_dir=output_dir,
+                )
+                return (path,)
+            except RuntimeError as e:
+                last_err = e
+                msg = str(e).lower()
+                # Detect server-side resource exhaustion. The poll loop
+                # returns the last task info as a JSON dump, but our
+                # _humanize_task_failure already pulled the error message.
+                is_resource_error = any(
+                    marker in msg for marker in _RETRYABLE_SERVER_ERRORS
+                )
+                if is_resource_error and server_attempt < self.SERVER_RETRY_MAX:
+                    print(
+                        f"[AgnesVideoGenerateNode] server resource error "
+                        f"(attempt {server_attempt + 1}/{self.SERVER_RETRY_MAX + 1}): "
+                        f"{e!s:.200}\n"
+                        f"  Retrying in {self.SERVER_RETRY_BACKOFF}s — "
+                        f"GPU may be released by then."
+                    )
+                    time.sleep(self.SERVER_RETRY_BACKOFF)
+                    continue
+                # Not a resource error, or out of retries — give up
+                raise
+
+        # Shouldn't reach here, but just in case
+        raise last_err or RuntimeError("video generation failed")
 
 
 # ---------------------------------------------------------------------------
