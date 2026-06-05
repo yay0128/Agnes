@@ -1,0 +1,298 @@
+{
+  "last_node_id": 5,
+  "last_link_id": 6,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "AgnesTextNode",
+      "pos": [80, 80],
+      "size": [380, 280],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "expanded_prompt",
+          "type": "STRING",
+          "links": [1],
+          "slot_index": 0
+        }
+      ],
+      "title": "① Prompt Refinement (2.0 Flash)",
+      "properties": {
+        "color": "#7a4fcb",
+        "bgcolor": "#2a1a47"
+      },
+      "widgets_values": [
+        "A lone astronaut floating through a nebula",
+        "",
+        "You are a senior director of photography. Expand the user's brief idea into a vivid, production-ready image description. Use the structure: [Subject] + [Action/Expression] + [Setting] + [Lighting] + [Camera/Lens] + [Color/Mood]. Output only the description, no preamble, no labels, no quotes.",
+        512,
+        0.6
+      ]
+    },
+    {
+      "id": 2,
+      "type": "AgnesImageNode",
+      "pos": [560, 60],
+      "size": [420, 360],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": 1,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "local_path",
+          "type": "STRING",
+          "links": [2],
+          "slot_index": 0
+        },
+        {
+          "name": "public_url",
+          "type": "STRING",
+          "links": [5],
+          "slot_index": 1
+        },
+        {
+          "name": "edit_instruction",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 2
+        }
+      ],
+      "title": "② Initial Image (T2I, 1024×768)",
+      "properties": {
+        "color": "#4f7a3f",
+        "bgcolor": "#1a3010"
+      },
+      "widgets_values": [
+        "",
+        "1024x768",
+        "",
+        "",
+        "url",
+        "outputs/agnes",
+        false
+      ]
+    },
+    {
+      "id": 3,
+      "type": "AgnesImageNode",
+      "pos": [1080, 60],
+      "size": [420, 360],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": null,
+          "slot_index": 0
+        },
+        {
+          "name": "input_image",
+          "type": "STRING",
+          "link": 2,
+          "slot_index": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "local_path",
+          "type": "STRING",
+          "links": [3],
+          "slot_index": 0
+        },
+        {
+          "name": "public_url",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        },
+        {
+          "name": "edit_instruction",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 2
+        }
+      ],
+      "title": "③ First Edit (I2I, change palette + add character detail)",
+      "properties": {
+        "color": "#3f7a7a",
+        "bgcolor": "#103030"
+      },
+      "widgets_values": [
+        "",
+        "1024x768",
+        "",
+        "",
+        "Reinterpret the scene with a teal-and-orange color grade. Add a faint reflection of the astronaut's helmet visor showing a distant blue planet. Keep the same composition, subject position, and overall framing.",
+        "url",
+        "outputs/agnes",
+        false
+      ]
+    },
+    {
+      "id": 4,
+      "type": "AgnesImageNode",
+      "pos": [1600, 60],
+      "size": [420, 360],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": null,
+          "slot_index": 0
+        },
+        {
+          "name": "input_image",
+          "type": "STRING",
+          "link": 3,
+          "slot_index": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "local_path",
+          "type": "STRING",
+          "links": [4],
+          "slot_index": 0
+        },
+        {
+          "name": "public_url",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        },
+        {
+          "name": "edit_instruction",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 2
+        }
+      ],
+      "title": "④ Second Edit (I2I, add motion cue for video)",
+      "properties": {
+        "color": "#3f4f7a",
+        "bgcolor": "#101840"
+      },
+      "widgets_values": [
+        "",
+        "1024x768",
+        "",
+        "",
+        "Add a slight motion-blur effect trailing behind the astronaut, suggesting forward drift. Make the nebula in the background subtly swirl to imply movement. Keep the same composition and color grade. The end result should look like a still frame from a cinematic 24fps video.",
+        "url",
+        "outputs/agnes",
+        false
+      ]
+    },
+    {
+      "id": 5,
+      "type": "AgnesVideoGenerateNode",
+      "pos": [2120, 80],
+      "size": [420, 380],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": 4,
+          "slot_index": 0
+        },
+        {
+          "name": "image",
+          "type": "STRING",
+          "link": 5,
+          "slot_index": 1
+        }
+      ],
+      "outputs": [],
+      "title": "⑤ Image-to-Video (121 frames, 5s)",
+      "properties": {
+        "color": "#7a4f3f",
+        "bgcolor": "#402010"
+      },
+      "widgets_values": [
+        "",
+        "",
+        768,
+        1152,
+        121,
+        24,
+        10,
+        1800,
+        "outputs/agnes"
+      ]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 2, 0, "STRING"],
+    [2, 2, 0, 3, 4, "STRING"],
+    [3, 3, 0, 4, 4, "STRING"],
+    [4, 4, 2, 5, 0, "STRING"],
+    [5, 3, 1, 5, 1, "STRING"]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "1. Prompt Refinement",
+      "bounding": [40, 40, 460, 340],
+      "color": "#7a4fcb"
+    },
+    {
+      "id": 2,
+      "title": "2. Initial Image (T2I)",
+      "bounding": [520, 20, 480, 420],
+      "color": "#4f7a3f"
+    },
+    {
+      "id": 3,
+      "title": "3. First Edit (I2I)",
+      "bounding": [1040, 20, 480, 420],
+      "color": "#3f7a7a"
+    },
+    {
+      "id": 4,
+      "title": "4. Second Edit (I2I)",
+      "bounding": [1560, 20, 480, 420],
+      "color": "#3f4f7a"
+    },
+    {
+      "id": 5,
+      "title": "5. Image-to-Video",
+      "bounding": [2080, 40, 480, 440],
+      "color": "#7a4f3f"
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.65,
+      "offset": [60, 40]
+    },
+    "info": {
+      "name": "T2I → Edit → Edit → I2V Pipeline",
+      "author": "Agnes Workflow Generator",
+      "description": "End-to-end pipeline: refine a short user prompt with Agnes 2.0 Flash, generate an initial image with Agnes Image 2.1 Flash, refine through two image-to-image edit passes, then animate the final image with Agnes Video V2.0. All intermediate outputs are auto-uploaded to 0x0.st so the next node can chain without manual file handling.",
+      "copyright": "MIT",
+      "licence": "",
+      "date": "2026-06-05"
+    }
+  },
+  "version": 0.4
+}

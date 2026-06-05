@@ -277,6 +277,60 @@ def _get_with_retry(
 
 
 # ---------------------------------------------------------------------------
+# Public image hosting (for image-to-image / image-to-video inputs)
+# ---------------------------------------------------------------------------
+#
+# Agnes APIs only accept PUBLIC URLs for image inputs. To make the
+# workflow self-contained, the image node auto-uploads the result to a
+# free public host (0x0.st) so the next node can chain on it.
+#
+# 0x0.st is:
+#   - Free, no auth, no rate limit on a per-IP basis (soft)
+#   - Returns a permanent public URL
+#   - Accepts up to 512 MB
+# If it fails, the user can paste a URL manually into the next node.
+
+PUBLIC_UPLOAD_URL = "https://0x0.st"
+
+
+def _upload_to_public_host(local_path: str, max_attempts: int = 3) -> str:
+    """Upload a local image file to 0x0.st and return the public URL.
+
+    Raises RuntimeError after retries exhausted.  This is best-effort
+    infrastructure — we deliberately don't fail the whole workflow if
+    upload fails, the caller should handle that case (e.g. by
+    instructing the user to upload manually).
+    """
+    last_exc: Exception | None = None
+    for attempt in range(max_attempts):
+        try:
+            with open(local_path, "rb") as f:
+                resp = requests.post(
+                    PUBLIC_UPLOAD_URL,
+                    files={"file": (Path(local_path).name, f)},
+                    timeout=120,
+                )
+            if not resp.ok:
+                raise RuntimeError(
+                    f"upload failed: {resp.status_code} {resp.text[:200]}"
+                )
+            public_url = resp.text.strip()
+            if not public_url.startswith("http"):
+                raise RuntimeError(
+                    f"unexpected upload response: {public_url[:200]}"
+                )
+            print(f"[Agnes] uploaded to {public_url}")
+            return public_url
+        except (requests.RequestException, RuntimeError, OSError) as e:
+            last_exc = e
+            if attempt < max_attempts - 1:
+                _sleep_backoff(attempt, f"upload to {PUBLIC_UPLOAD_URL} failed")
+    raise RuntimeError(
+        f"upload to {PUBLIC_UPLOAD_URL} failed after {max_attempts} attempts: {last_exc}"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Node 1 — prompt expansion with Agnes 2.0 Flash
 # ---------------------------------------------------------------------------
 
@@ -352,6 +406,254 @@ class AgnesTextNode:
             f"completion={usage.get('completion_tokens')}"
         )
         return (content,)
+
+
+# ---------------------------------------------------------------------------
+# Node 1.5 — image generation with Agnes Image 2.1 Flash
+# ---------------------------------------------------------------------------
+
+
+# Image sizes supported by Agnes Image 2.1 Flash. Width×height, must be
+# a multiple of 64. Common values shown; the API may support more.
+ALLOWED_IMAGE_SIZES = (
+    "512x512", "768x768", "1024x1024",
+    "1024x768", "1152x768", "1280x720",
+    "768x1024", "720x1280",
+)
+
+
+def _parse_size(size: str) -> tuple[int, int]:
+    """Parse 'WxH' into (width, height). Both must be multiples of 64."""
+    try:
+        w, h = size.lower().split("x")
+        w, h = int(w), int(h)
+    except (ValueError, AttributeError):
+        raise ValueError(
+            f"size must be 'WxH' (e.g. '1024x768'), got {size!r}"
+        )
+    if w % 64 or h % 64:
+        raise ValueError(
+            f"size dimensions must be multiples of 64, got {w}x{h}"
+        )
+    return w, h
+
+
+class AgnesImageNode:
+    """Generate or edit images with Agnes Image 2.1 Flash.
+
+    Two modes:
+      - **Text-to-image**: leave `input_image` empty. The model generates
+        a fresh image from the prompt.
+      - **Image-to-image**: pass a local file path in `input_image`. The
+        node uploads it to 0x0.st, then sends the public URL to Agnes
+        for editing. The result preserves the original composition.
+
+    Always auto-uploads the result to 0x0.st and returns the public URL
+    on the `public_url` output, so the next node in the chain (e.g.
+    `AgnesVideoGenerateNode`) can consume it directly via its `image`
+    widget. The local file path is also returned on `local_path` for
+    users who want to preview or save it.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "prompt": (
+                    "STRING",
+                    {
+                        "multiline": True,
+                        "default": "A lone astronaut floating through a nebula, cinematic lighting",
+                    },
+                ),
+                "size": (
+                    "STRING",
+                    {
+                        "default": "1024x768",
+                        "tooltip": f"WxH, multiples of 64. Allowed: {', '.join(ALLOWED_IMAGE_SIZES)}",
+                    },
+                ),
+            },
+            "optional": {
+                "api_key": (
+                    "STRING",
+                    {"default": "", "password": True,
+                     "tooltip": "Leave empty to use AGNES_API_KEY env var"},
+                ),
+                "input_image": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "multiline": False,
+                        "tooltip": "Local file path (T2I/edit mode). Leave empty for pure text-to-image.",
+                    },
+                ),
+                "edit_instruction": (
+                    "STRING",
+                    {
+                        "multiline": True,
+                        "default": "",
+                        "tooltip": "Optional: how to edit the input image. "
+                                   "If set, this REPLACES the prompt for the "
+                                   "image-to-image call. If empty, the prompt "
+                                   "is used for both T2I and I2I.",
+                    },
+                ),
+                "response_format": (
+                    "STRING",
+                    {
+                        "default": "url",
+                        "choices": ["url"],
+                        "tooltip": "Always 'url' — Agnes returns a CDN URL we can re-host.",
+                    },
+                ),
+                "output_dir": (
+                    "STRING",
+                    {"default": "outputs/agnes"},
+                ),
+                "skip_upload": (
+                    "BOOLEAN",
+                    {
+                        "default": False,
+                        "tooltip": "If true, skip the public-host upload and just "
+                                   "return the local file path. Faster but the "
+                                   "next node can't chain automatically.",
+                    },
+                ),
+            },
+        }
+
+    RETURN_TYPES = ("STRING", "STRING", "STRING")
+    RETURN_NAMES = ("local_path", "public_url", "edit_instruction")
+    FUNCTION = "generate"
+    CATEGORY = "Agnes/image"
+    OUTPUT_NODE = True
+
+    def generate(
+        self,
+        prompt: str,
+        size: str = "1024x768",
+        api_key: str = "",
+        input_image: str = "",
+        edit_instruction: str = "",
+        response_format: str = "url",
+        output_dir: str = "outputs/agnes",
+        skip_upload: bool = False,
+    ) -> tuple[str, str, str]:
+        _parse_size(size)  # validate
+
+        key = _resolve_key(api_key)
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Decide the actual prompt and image inputs for the API call
+        actual_prompt = prompt
+        image_urls: list[str] = []
+
+        if input_image.strip():
+            # Image-to-image mode: upload the local file, then call with image
+            ip = input_image.strip()
+            if not os.path.exists(ip):
+                raise FileNotFoundError(f"input_image not found: {ip}")
+            print(f"[AgnesImageNode] uploading input image: {ip}")
+            input_url = _upload_to_public_host(ip)
+            image_urls = [input_url]
+            if edit_instruction.strip():
+                actual_prompt = edit_instruction.strip()
+            else:
+                actual_prompt = (
+                    f"{prompt} (preserving the original composition and subject)"
+                )
+            print(
+                f"[AgnesImageNode] image-to-image mode: "
+                f"prompt={actual_prompt[:80]!r}"
+            )
+        else:
+            # Pure text-to-image
+            print(f"[AgnesImageNode] text-to-image: prompt={prompt[:80]!r}")
+
+        # Build the API payload (matches clients/agnes_client.py format)
+        payload: dict = {
+            "model": "agnes-image-2.1-flash",
+            "prompt": actual_prompt,
+            "size": size,
+        }
+        if image_urls:
+            payload["extra_body"] = {
+                "image": image_urls,
+                "response_format": response_format,
+            }
+
+        data = _post_with_retry("/images/generations", payload, api_key=key)
+
+        # Extract the image URL from the response.
+        # Format (OpenAI-compatible): {"created": ..., "data": [{"url": "..."}]}
+        items = data.get("data") or []
+        if not items:
+            raise RuntimeError(f"no images in response: {data}")
+        first = items[0]
+        # Support both `url` and `b64_json` shapes
+        image_url = first.get("url")
+        if not image_url:
+            raise RuntimeError(
+                f"no url in response item; b64_json returned? ({list(first.keys())})"
+            )
+
+        print(f"[AgnesImageNode] image generated: {image_url}")
+
+        # Download to disk
+        os.makedirs(output_dir, exist_ok=True)
+        # Use a stable filename pattern so re-runs overwrite (cheap re-render)
+        ts = int(time.time() * 1000)
+        local_path = os.path.abspath(
+            os.path.join(output_dir, f"agnes_image_{ts}.png")
+        )
+        last_exc: Exception | None = None
+        for attempt in range(3):
+            try:
+                with requests.get(image_url, stream=True, timeout=(30, 120)) as r:
+                    r.raise_for_status()
+                    with open(local_path, "wb") as f:
+                        for chunk in r.iter_content(chunk_size=1 << 16):
+                            f.write(chunk)
+                last_exc = None
+                break
+            except requests.RequestException as e:
+                last_exc = e
+                if os.path.exists(local_path):
+                    try:
+                        os.remove(local_path)
+                    except OSError:
+                        pass
+                if not _is_retryable_exception(e):
+                    raise RuntimeError(f"image download failed: {e}") from e
+                if attempt < 2:
+                    _sleep_backoff(attempt, "image download network error")
+        if last_exc is not None:
+            raise RuntimeError(
+                f"image download failed after 3 attempts: {last_exc}"
+            ) from last_exc
+
+        size_kb = os.path.getsize(local_path) / 1024
+        print(f"[AgnesImageNode] saved {size_kb:.1f} KB to {local_path}")
+
+        # Optionally re-upload to a public host so the next node can chain.
+        # We re-upload rather than reuse the API-returned URL because the
+        # API URL may be a one-shot signed link that expires.
+        public_url = ""
+        if not skip_upload:
+            try:
+                public_url = _upload_to_public_host(local_path)
+            except RuntimeError as e:
+                print(
+                    f"[AgnesImageNode] WARNING: public upload failed: {e}\n"
+                    f"  Local file is at: {local_path}\n"
+                    f"  To continue the chain, manually upload this file to "
+                    f"any public host and paste the URL into the next node."
+                )
+
+        # Return the edit_instruction so downstream nodes can see what
+        # the user actually asked for (useful for the video prompt).
+        return (local_path, public_url, actual_prompt)
 
 
 # ---------------------------------------------------------------------------
@@ -633,10 +935,12 @@ class AgnesVideoGenerateNode:
 
 NODE_CLASS_MAPPINGS = {
     "AgnesTextNode": AgnesTextNode,
+    "AgnesImageNode": AgnesImageNode,
     "AgnesVideoGenerateNode": AgnesVideoGenerateNode,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "AgnesTextNode": "Agnes Text (2.0 Flash)",
+    "AgnesImageNode": "Agnes Image (2.1 Flash)",
     "AgnesVideoGenerateNode": "Agnes Video Generate (V2.0)",
 }
