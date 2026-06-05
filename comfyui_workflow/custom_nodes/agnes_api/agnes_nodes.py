@@ -12,6 +12,7 @@ The API key can be provided via the widget, the AGNES_API_KEY env var, or a
 from __future__ import annotations
 
 import os
+import random
 import time
 from pathlib import Path
 from typing import Any
@@ -77,24 +78,85 @@ def _resolve_key(api_key: str) -> str:
     return env
 
 
-# Network errors that are worth retrying (DNS, connection drops, timeouts).
-# We deliberately retry these — they're typically transient.
-_RETRYABLE_NETWORK_ERRORS = (
-    requests.exceptions.ConnectionError,
-    requests.exceptions.Timeout,
-    requests.exceptions.ChunkedEncodingError,
+# ---------------------------------------------------------------------------
+# Retry policy
+# ---------------------------------------------------------------------------
+#
+# Design goals (per operator feedback):
+#   1. Exponential backoff with jitter — first failure waits ~2s, doubles
+#      each time, capped at 30s. Random jitter prevents all clients from
+#      hammering the server at the same instant when a blip clears.
+#   2. Retry only truly recoverable errors. We retry:
+#        - Transient network errors (DNS, connection refused, timeouts)
+#        - HTTP 429 (upstream saturated — they explicitly want us to back off)
+#        - HTTP 5xx (server hiccups, gateway errors)
+#      We do NOT retry:
+#        - HTTP 400, 401, 403, 404 (client errors — retrying won't help)
+#        - 4xx codes in general except 408 (request timeout) and 425 (too early)
+#   3. Time-budget aware. 5 attempts with backoff (2, 4, 8, 16, 30) caps
+#      total wait at ~60s for POST, ~15s for GET. Bounded so a single bad
+#      request can't stall the workflow forever.
+
+# HTTP statuses that mean "the server is having a bad day, try again"
+_RETRYABLE_HTTP_STATUSES = frozenset({408, 425, 429, 500, 502, 503, 504})
+
+# Network exceptions that mean "we never even got an answer, try again"
+_RETRYABLE_NETWORK_EXCEPTIONS = (
+    requests.exceptions.ConnectionError,    # DNS, refused, SSLError
+    requests.exceptions.Timeout,             # Connect / read timeout
+    requests.exceptions.ChunkedEncodingError,  # Stream broke mid-body
 )
+
+# Backoff schedule. Index = retry attempt (0-based).
+# Capped at 30s so a 5th attempt doesn't wait 5 minutes.
+_BACKOFF_BASE = 2.0       # seconds — first retry waits ~2s (was 10s before)
+_BACKOFF_FACTOR = 2.0     # exponential growth
+_BACKOFF_CAP = 30.0       # max single sleep
+_BACKOFF_JITTER = 0.25    # ±25% random jitter
 
 
 def _is_retryable_exception(exc: BaseException) -> bool:
-    """True for transient network errors (DNS, refused, timeout)."""
-    if isinstance(exc, _RETRYABLE_NETWORK_ERRORS):
+    """True for transient network errors (DNS, refused, timeout, SSL)."""
+    if isinstance(exc, _RETRYABLE_NETWORK_EXCEPTIONS):
         return True
-    # urllib3 wraps ConnectionError in MaxRetryError
+    # urllib3 wraps ConnectionError in MaxRetryError; unwrap one level.
     cause = getattr(exc, "__cause__", None) or getattr(exc, "__context__", None)
-    if cause is not None and isinstance(cause, _RETRYABLE_NETWORK_ERRORS):
+    if cause is not None and isinstance(cause, _RETRYABLE_NETWORK_EXCEPTIONS):
         return True
     return False
+
+
+def _is_retryable_status(code: int) -> bool:
+    """True for statuses that mean 'try again later'."""
+    return code in _RETRYABLE_HTTP_STATUSES
+
+
+def _compute_backoff(attempt: int) -> float:
+    """Exponential backoff with ±jitter random noise.
+
+    attempt=0 -> ~2s, attempt=1 -> ~4s, attempt=2 -> ~8s, attempt=3 -> ~16s,
+    attempt=4+ -> capped at 30s. Jitter is uniform in [-25%, +25%].
+
+    The jitter matters: if 100 clients all hit a 500 at the same moment,
+    without jitter they'd all retry at exactly +2s, +4s, +8s — re-creating
+    the thundering herd. Jitter spreads the retries out across time.
+
+    The cap is applied to the *result*, not the base, so the final value
+    is always in [22.5s, 30s] for any attempt >= 4.
+    """
+    base = min(_BACKOFF_BASE * (_BACKOFF_FACTOR ** attempt), _BACKOFF_CAP)
+    jitter = base * _BACKOFF_JITTER
+    val = base + random.uniform(-jitter, jitter)
+    # Hard cap so a high-jitter sample doesn't sneak past 30s.
+    return min(val, _BACKOFF_CAP)
+
+
+def _sleep_backoff(attempt: int, label: str) -> float:
+    """Sleep with jittered exponential backoff; return actual time slept."""
+    wait = _compute_backoff(attempt)
+    print(f"[Agnes] {label}, sleeping {wait:.1f}s (backoff attempt {attempt + 1})")
+    time.sleep(wait)
+    return wait
 
 
 def _post_with_retry(
@@ -102,89 +164,116 @@ def _post_with_retry(
     payload: dict[str, Any],
     api_key: str,
     max_attempts: int = 5,
-    base_wait: int = 10,
 ) -> dict[str, Any]:
-    """POST that backs off on 429 (upstream saturated) and transient network errors.
+    """POST with smart retry.
 
     Retries on:
-      - HTTP 429 (upstream saturated)
-      - ConnectionError, Timeout, ChunkedEncodingError
-        (covers NameResolutionError, ConnectionRefusedError, ReadTimeout)
+      - Transient network errors (ConnectionError, Timeout, ChunkedEncodingError)
+        — covers NameResolutionError, ConnectionRefusedError, ReadTimeout, SSLError
+      - HTTP 408, 425, 429, 500, 502, 503, 504
+
+    Fails fast on:
+      - HTTP 400, 401, 403, 404, 422 (client errors — retrying won't help)
+
+    Backoff: exponential with ±25% jitter, capped at 30s per attempt.
     """
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     last_exc: Exception | None = None
-    for attempt in range(1, max_attempts + 1):
+    last_status: int | None = None
+
+    for attempt in range(max_attempts):
         try:
             resp = requests.post(
                 f"{BASE_URL}{path}", json=payload, headers=headers, timeout=120
             )
         except requests.RequestException as e:
-            last_exc = e
             if not _is_retryable_exception(e):
-                # Non-transient (e.g. SSL cert failure, invalid URL) — fail fast
                 raise RuntimeError(f"POST {path} failed: {e}") from e
-            wait = base_wait * attempt
-            print(f"[Agnes] network error on POST {path}: {type(e).__name__}, "
-                  f"sleeping {wait}s (attempt {attempt}/{max_attempts})")
-            time.sleep(wait)
+            last_exc = e
+            print(f"[Agnes] POST {path} network error: {type(e).__name__} "
+                  f"({e!s:.80})")
+            if attempt < max_attempts - 1:
+                _sleep_backoff(attempt, f"network error on POST {path}")
             continue
-        if resp.status_code == 429:
-            wait = base_wait * attempt
-            print(f"[Agnes] 429 from {path}, sleeping {wait}s (attempt {attempt})")
-            time.sleep(wait)
+
+        # Got a response — check status
+        if _is_retryable_status(resp.status_code):
+            last_status = resp.status_code
+            print(f"[Agnes] POST {path} returned {resp.status_code}")
+            if attempt < max_attempts - 1:
+                _sleep_backoff(attempt, f"HTTP {resp.status_code} on POST {path}")
             continue
+
         if not resp.ok:
-            raise RuntimeError(f"POST {path} failed: {resp.status_code} {resp.text}")
+            # 4xx other than the retryable set — fail fast
+            raise RuntimeError(
+                f"POST {path} failed: {resp.status_code} {resp.text}"
+            )
         return resp.json()
-    # Exhausted retries
-    if last_exc is not None and _is_retryable_exception(last_exc):
+
+    # Exhausted retries — produce a clear error
+    if last_exc is not None:
         raise RuntimeError(
-            f"POST {path} failed after {max_attempts} network retries: {last_exc}"
-        )
+            f"POST {path} failed after {max_attempts} attempts "
+            f"(last network error: {last_exc})"
+        ) from last_exc
     raise RuntimeError(
-        f"POST {path} kept returning 429 after {max_attempts} attempts"
+        f"POST {path} failed after {max_attempts} attempts "
+        f"(last HTTP status: {last_status})"
     )
 
 
 def _get_with_retry(
     path: str,
     api_key: str,
-    max_attempts: int = 5,
-    base_wait: int = 5,
+    max_attempts: int = 3,
 ) -> dict[str, Any]:
-    """GET that retries on transient network errors. Used by the poll loop.
+    """GET with smart retry. Used by the poll loop.
 
-    Different retry profile from POST:
-      - Faster backoff (5s base) because polling is a tight loop
-      - No 429 handling needed (GET rarely rate-limited)
+    Same retry logic as POST, but fewer attempts (3) and shorter total
+    budget — polling is a tight loop, and we'd rather see a fresh status
+    than wait forever on a stale one.
     """
     headers = {"Authorization": f"Bearer {api_key}"}
     last_exc: Exception | None = None
-    for attempt in range(1, max_attempts + 1):
+    last_status: int | None = None
+
+    for attempt in range(max_attempts):
         try:
             resp = requests.get(
                 f"{BASE_URL}{path}", headers=headers, timeout=60
             )
         except requests.RequestException as e:
-            last_exc = e
             if not _is_retryable_exception(e):
                 raise RuntimeError(f"GET {path} failed: {e}") from e
-            wait = base_wait * attempt
-            print(f"[Agnes] network error on GET {path}: {type(e).__name__}, "
-                  f"sleeping {wait}s (attempt {attempt}/{max_attempts})")
-            time.sleep(wait)
+            last_exc = e
+            print(f"[Agnes] GET {path} network error: {type(e).__name__} "
+                  f"({e!s:.80})")
+            if attempt < max_attempts - 1:
+                _sleep_backoff(attempt, f"network error on GET {path}")
             continue
-        if resp.status_code == 429:
-            time.sleep(base_wait * attempt)
+
+        if _is_retryable_status(resp.status_code):
+            last_status = resp.status_code
+            if attempt < max_attempts - 1:
+                _sleep_backoff(attempt, f"HTTP {resp.status_code} on GET {path}")
             continue
+
         if not resp.ok:
-            raise RuntimeError(f"GET {path} failed: {resp.status_code} {resp.text}")
+            raise RuntimeError(
+                f"GET {path} failed: {resp.status_code} {resp.text}"
+            )
         return resp.json()
-    if last_exc is not None and _is_retryable_exception(last_exc):
+
+    if last_exc is not None:
         raise RuntimeError(
-            f"GET {path} failed after {max_attempts} network retries: {last_exc}"
-        )
-    raise RuntimeError(f"GET {path} kept failing: {last_exc}")
+            f"GET {path} failed after {max_attempts} attempts "
+            f"(last network error: {last_exc})"
+        ) from last_exc
+    raise RuntimeError(
+        f"GET {path} failed after {max_attempts} attempts "
+        f"(last HTTP status: {last_status})"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -351,11 +440,9 @@ class AgnesVideoGenerateNode:
         last: dict[str, Any] = {}
         while time.monotonic() < deadline:
             try:
-                last = _get_with_retry(
-                    f"/videos/{task_id}", api_key=key, max_attempts=3, base_wait=5
-                )
+                last = _get_with_retry(f"/videos/{task_id}", api_key=key)
             except RuntimeError as e:
-                # _get_with_retry already printed the network errors with backoff
+                # _get_with_retry already printed the network errors with backoff.
                 # If we still can't get a response, treat this poll as a miss
                 # and continue the loop (we still have time before deadline).
                 print(f"[AgnesVideoGenerateNode] poll failed: {e}, continuing...")
@@ -377,7 +464,7 @@ class AgnesVideoGenerateNode:
                 f"Video task {task_id} did not complete within {max_wait}s"
             )
 
-        # 3) Download (with retry for transient network errors)
+        # 3) Download (with smart retry for transient network errors)
         video_url = last.get("video_url") or last.get("remixed_from_video_id")
         if not video_url:
             raise RuntimeError(f"No video_url in response: {last}")
@@ -386,10 +473,10 @@ class AgnesVideoGenerateNode:
         filename = f"agnes_video_{task_id}.mp4"
         out_path = os.path.abspath(os.path.join(output_dir, filename))
 
-        # Wrap the download in retry logic.  We delete a partial file on
-        # failure so the next attempt starts fresh.
+        # Download with retry.  We delete a partial file on failure so the
+        # next attempt starts clean.
         last_exc: Exception | None = None
-        for attempt in range(1, 4):  # 3 attempts
+        for attempt in range(3):
             try:
                 with requests.get(video_url, stream=True, timeout=600) as r:
                     r.raise_for_status()
@@ -400,7 +487,6 @@ class AgnesVideoGenerateNode:
                 break
             except requests.RequestException as e:
                 last_exc = e
-                # Remove partial file so the retry is clean
                 if os.path.exists(out_path):
                     try:
                         os.remove(out_path)
@@ -408,15 +494,16 @@ class AgnesVideoGenerateNode:
                         pass
                 if not _is_retryable_exception(e):
                     raise RuntimeError(f"download failed: {e}") from e
-                wait = 5 * attempt
-                print(f"[AgnesVideoGenerateNode] download network error "
-                      f"({type(e).__name__}), retrying in {wait}s "
-                      f"(attempt {attempt}/3)")
-                time.sleep(wait)
+                print(
+                    f"[AgnesVideoGenerateNode] download network error: "
+                    f"{type(e).__name__}"
+                )
+                if attempt < 2:
+                    _sleep_backoff(attempt, "download network error")
 
         if last_exc is not None:
             raise RuntimeError(
-                f"download failed after 3 retries: {last_exc}"
+                f"download failed after 3 attempts: {last_exc}"
             ) from last_exc
 
         size_mb = os.path.getsize(out_path) / (1024 * 1024)
