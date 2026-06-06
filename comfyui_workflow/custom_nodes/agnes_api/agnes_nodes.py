@@ -13,9 +13,11 @@ from __future__ import annotations
 
 import os
 import random
+import socket
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse, urlunparse
 
 import requests
 
@@ -157,6 +159,129 @@ def _sleep_backoff(attempt: int, label: str) -> float:
     print(f"[Agnes] {label}, sleeping {wait:.1f}s (backoff attempt {attempt + 1})")
     time.sleep(wait)
     return wait
+
+
+# ---------------------------------------------------------------------------
+# Robust file download
+# ---------------------------------------------------------------------------
+#
+# Downloading from storage.googleapis.com is unreliable from some networks
+# (DNS flakes, transient IPv6 issues, captive portals). We:
+#   1. Pre-resolve the host to an IPv4 address up front
+#   2. On connection failure, retry with backoff
+#   3. On persistent failure, swap the URL to use the resolved IP
+#      directly with a Host: header (forces HTTP/1.1, bypasses some
+#      resolver-related issues with HTTP/2)
+#
+# This is overkill for 99%% of the time, but the other 1%% hits a 3-minute
+# workflow that fails to save the final MP4. Worth it.
+
+
+def _resolve_ipv4(host: str) -> str | None:
+    """Resolve hostname to an IPv4 address. Returns None on failure."""
+    try:
+        infos = socket.getaddrinfo(host, None, socket.AF_INET, socket.SOCK_STREAM)
+        return infos[0][4][0] if infos else None
+    except (socket.gaierror, OSError):
+        return None
+
+
+def _download_with_fallback(
+    url: str,
+    out_path: str,
+    max_attempts: int = 5,
+    connect_timeout: float = 30.0,
+    read_timeout: float = 300.0,
+) -> None:
+    """Download a file with full retry + DNS-fallback resilience.
+
+    Differences from a plain requests.get(..., stream=True):
+      - 5 attempts (vs 3) with exponential backoff between
+      - On DNS resolution failure, retries with the host replaced by
+        its pre-resolved IP (forces HTTP/1.1, often bypasses flaky DNS)
+      - Logs each attempt with the actual error so you can diagnose
+
+    Raises RuntimeError on final failure.
+    """
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    scheme = parsed.scheme or "https"
+    port = parsed.port or (443 if scheme == "https" else 80)
+
+    # Pre-resolve the IP once. If DNS is down, we still have it for the
+    # IP-fallback path.
+    ip = _resolve_ipv4(host)
+
+    last_exc: Exception | None = None
+    for attempt in range(max_attempts):
+        # Try the normal hostname-based request first
+        try:
+            with requests.get(
+                url, stream=True, timeout=(connect_timeout, read_timeout)
+            ) as r:
+                r.raise_for_status()
+                with open(out_path, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=1 << 16):
+                        f.write(chunk)
+            return
+        except (requests.RequestException, OSError) as e:
+            last_exc = e
+            err_name = type(e).__name__
+            # If it's a network-level failure AND we have an IP, try the
+            # IP-fallback path on the next attempt.
+            if _is_retryable_exception(e) and ip and attempt < max_attempts - 1:
+                print(
+                    f"[Agnes] download attempt {attempt + 1}/{max_attempts} "
+                    f"failed ({err_name}: {e!s:.80}); "
+                    f"will try IP-fallback next"
+                )
+                _sleep_backoff(attempt, "download network error")
+                # Build an IP-based URL with Host header
+                ip_url = urlunparse(parsed._replace(netloc=f"{ip}:{port}"))
+                try:
+                    with requests.get(
+                        ip_url,
+                        stream=True,
+                        timeout=(connect_timeout, read_timeout),
+                        headers={"Host": host},
+                    ) as r:
+                        r.raise_for_status()
+                        with open(out_path, "wb") as f:
+                            for chunk in r.iter_content(chunk_size=1 << 16):
+                                f.write(chunk)
+                    print(f"[Agnes] IP-fallback succeeded ({ip})")
+                    return
+                except (requests.RequestException, OSError) as e2:
+                    last_exc = e2
+                    print(
+                        f"[Agnes] IP-fallback attempt {attempt + 1} failed: "
+                        f"{type(e2).__name__}: {e2!s:.80}"
+                    )
+                    # Clean up partial file
+                    if os.path.exists(out_path):
+                        try:
+                            os.remove(out_path)
+                        except OSError:
+                            pass
+                    if attempt < max_attempts - 1:
+                        _sleep_backoff(attempt + 1, "IP-fallback failed")
+                    continue
+            # Not a network error, or last attempt — bail
+            if os.path.exists(out_path):
+                try:
+                    os.remove(out_path)
+                except OSError:
+                    pass
+            if not _is_retryable_exception(e):
+                raise RuntimeError(
+                    f"download failed (non-retryable): {e}"
+                ) from e
+            if attempt < max_attempts - 1:
+                _sleep_backoff(attempt, "download network error")
+    # All attempts exhausted
+    raise RuntimeError(
+        f"download failed after {max_attempts} attempts: {last_exc}"
+    ) from last_exc
 
 
 def _post_with_retry(
@@ -607,31 +732,13 @@ class AgnesImageNode:
         local_path = os.path.abspath(
             os.path.join(output_dir, f"agnes_image_{ts}.png")
         )
-        last_exc: Exception | None = None
-        for attempt in range(3):
-            try:
-                with requests.get(image_url, stream=True, timeout=(30, 120)) as r:
-                    r.raise_for_status()
-                    with open(local_path, "wb") as f:
-                        for chunk in r.iter_content(chunk_size=1 << 16):
-                            f.write(chunk)
-                last_exc = None
-                break
-            except requests.RequestException as e:
-                last_exc = e
-                if os.path.exists(local_path):
-                    try:
-                        os.remove(local_path)
-                    except OSError:
-                        pass
-                if not _is_retryable_exception(e):
-                    raise RuntimeError(f"image download failed: {e}") from e
-                if attempt < 2:
-                    _sleep_backoff(attempt, "image download network error")
-        if last_exc is not None:
-            raise RuntimeError(
-                f"image download failed after 3 attempts: {last_exc}"
-            ) from last_exc
+        # Robust download: 5 attempts with DNS pre-resolution and IP
+        # fallback. The API returns a storage.googleapis.com URL which
+        # can be flaky from some networks.
+        _download_with_fallback(
+            image_url, local_path,
+            max_attempts=5, connect_timeout=30, read_timeout=120,
+        )
 
         size_kb = os.path.getsize(local_path) / 1024
         print(f"[AgnesImageNode] saved {size_kb:.1f} KB to {local_path}")
@@ -822,38 +929,12 @@ class AgnesVideoGenerateNode:
         filename = f"agnes_video_{task_id}.mp4"
         out_path = os.path.abspath(os.path.join(output_dir, filename))
 
-        # Streaming download. 5 min connect/read timeout is enough for
-        # typical MP4s (1-5 MB). Larger outputs may need bigger timeouts.
-        last_exc: Exception | None = None
-        for attempt in range(3):
-            try:
-                with requests.get(video_url, stream=True, timeout=(30, 300)) as r:
-                    r.raise_for_status()
-                    with open(out_path, "wb") as f:
-                        for chunk in r.iter_content(chunk_size=1 << 16):
-                            f.write(chunk)
-                last_exc = None
-                break
-            except requests.RequestException as e:
-                last_exc = e
-                if os.path.exists(out_path):
-                    try:
-                        os.remove(out_path)
-                    except OSError:
-                        pass
-                if not _is_retryable_exception(e):
-                    raise RuntimeError(f"download failed: {e}") from e
-                print(
-                    f"[AgnesVideoGenerateNode] download network error: "
-                    f"{type(e).__name__}"
-                )
-                if attempt < 2:
-                    _sleep_backoff(attempt, "download network error")
-
-        if last_exc is not None:
-            raise RuntimeError(
-                f"download failed after 3 attempts: {last_exc}"
-            ) from last_exc
+        # Robust download: 5 attempts with DNS pre-resolution and IP
+        # fallback. 5-min read timeout for the (typically 1-5 MB) MP4.
+        _download_with_fallback(
+            video_url, out_path,
+            max_attempts=5, connect_timeout=30, read_timeout=300,
+        )
 
         size_mb = os.path.getsize(out_path) / (1024 * 1024)
         print(f"[AgnesVideoGenerateNode] saved {size_mb:.2f} MB to {out_path}")
