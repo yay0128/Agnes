@@ -405,11 +405,86 @@ def _get_with_retry(
 # Public image hosting (for image-to-image / image-to-video inputs)
 # ---------------------------------------------------------------------------
 #
-# Agnes APIs only accept PUBLIC URLs for image inputs. To make the
-# workflow self-contained, the image node auto-uploads the result to a
-# Free public hosts, in priority order.  Each entry is
-# (endpoint_url, form_field_name, response_extractor).
-# 0x0.st was our original choice but disabled uploads in 2026
+# Agnes APIs only accept PUBLIC URLs for image inputs. The image node
+# has three hosting tiers, tried in order:
+#
+#   1. LOCAL SHARE SERVER (preferred, default)
+#      - We copy the file into a managed directory (~/Documents/ComfyUI/agnes_share/<date>/)
+#      - Then return a URL pointing at the local agnes_share_server.py
+#        process (default http://127.0.0.1:8766/)
+#      - Zero external dependencies, no rate limits, instant
+#      - Files auto-cleaned after 24h (configurable)
+#      - User runs agnes_share_server.py once at startup
+#
+#   2. PUBLIC UPLOAD HOSTS (fallback)
+#      - Free hosts (uguu.se, tmpfiles.org, 0x0.st) used when local
+#        server is not running
+#      - Subject to anti-abuse measures and capacity limits
+#
+# Configure via env vars:
+#   AGNES_SHARE_URL         default "http://127.0.0.1:8766"
+#   AGNES_SHARE_ROOT        default "~/Documents/ComfyUI/agnes_share"
+
+# ---------------------------------------------------------------------------
+# Tier 1: Local share server
+# ---------------------------------------------------------------------------
+
+LOCAL_SHARE_URL = os.environ.get(
+    "AGNES_SHARE_URL", "http://127.0.0.1:8766"
+).rstrip("/")
+LOCAL_SHARE_ROOT = Path(
+    os.environ.get("AGNES_SHARE_ROOT", "~/Documents/ComfyUI/agnes_share")
+).expanduser()
+
+
+def _publish_to_local_share(local_path: str) -> str | None:
+    """Copy a file into the managed share directory and return its URL.
+
+    Returns None if the local share server is unreachable (so the
+    caller can fall through to public upload hosts).  Raises
+    on filesystem errors that aren't a network issue.
+    """
+    try:
+        LOCAL_SHARE_ROOT.mkdir(parents=True, exist_ok=True)
+        # Organize by date so the cleanup sweep can find old files fast
+        date_dir = LOCAL_SHARE_ROOT / time.strftime("%Y-%m-%d")
+        date_dir.mkdir(exist_ok=True)
+        # Filename: HH-MM-SS_<origname> — keeps ordering within a day
+        ts = time.strftime("%H-%M-%S")
+        stem = Path(local_path).name
+        target = date_dir / f"{ts}_{stem}"
+        # Avoid collisions (multiple calls in same second)
+        counter = 1
+        while target.exists():
+            target = date_dir / f"{ts}_{counter}_{stem}"
+            counter += 1
+        # Copy (don't move — the source might be a temporary file or
+        # be referenced by other parts of the workflow)
+        import shutil
+        shutil.copy2(local_path, target)
+        rel = target.relative_to(LOCAL_SHARE_ROOT)
+        url = f"{LOCAL_SHARE_URL}/{rel.as_posix()}"
+        print(f"[Agnes] local share: {local_path} -> {url}")
+        # Quick reachability check (cheap, 2s timeout)
+        try:
+            requests.head(url, timeout=2).raise_for_status()
+        except requests.RequestException as e:
+            print(
+                f"[Agnes] WARNING: local share server unreachable at {url}: "
+                f"{e}. Will try public hosts as fallback."
+            )
+            return None
+        return url
+    except (OSError, ValueError) as e:
+        print(f"[Agnes] local share failed: {e}")
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Tier 2: Public upload hosts (fallback)
+# ---------------------------------------------------------------------------
+#
+# 0x0.st was the original choice but disabled uploads in 2026
 # ("AI botnet spam").  The fallback chain below keeps the workflow
 # alive as hosts come and go.
 #
@@ -481,6 +556,23 @@ def _upload_to_public_host(local_path: str, max_attempts_per_host: int = 2) -> s
     raise RuntimeError(
         f"all upload hosts failed (last error: {last_err})"
     )
+
+
+def _publish_to_public_url(local_path: str) -> str:
+    """Make a local file reachable as a public URL.
+
+    Tier 1: copy into the managed local share directory and return
+            the URL of the local file server (if running).
+    Tier 2: fall back to free public upload hosts.
+    """
+    # Tier 1: local
+    local_url = _publish_to_local_share(local_path)
+    if local_url:
+        return local_url
+
+    # Tier 2: public hosts
+    print("[Agnes] local share unavailable, falling back to public hosts")
+    return _upload_to_public_host(local_path)
 
 
 # ---------------------------------------------------------------------------
@@ -708,7 +800,7 @@ class AgnesImageNode:
             if not os.path.exists(ip):
                 raise FileNotFoundError(f"input_image not found: {ip}")
             print(f"[AgnesImageNode] uploading input image: {ip}")
-            input_url = _upload_to_public_host(ip)
+            input_url = _publish_to_public_url(ip)
             image_urls = [input_url]
             if edit_instruction.strip():
                 actual_prompt = edit_instruction.strip()
@@ -777,7 +869,7 @@ class AgnesImageNode:
         public_url = ""
         if not skip_upload:
             try:
-                public_url = _upload_to_public_host(local_path)
+                public_url = _publish_to_public_url(local_path)
             except RuntimeError as e:
                 print(
                     f"[AgnesImageNode] WARNING: public upload failed: {e}\n"
