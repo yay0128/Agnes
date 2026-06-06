@@ -1,0 +1,24 @@
+name: Validate workflows
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate workflow JSONs
+        run: |
+          python3 scripts/validate_workflows.py
+        # Exits 1 on validation errors, 0 on success.
+        # Catches the "widgets_values count mismatch" bug that caused
+        # the douyin workflow to fail silently in ComfyUI.
+        # See POST_MORTEM_douyin_workflow_widget_order.md for details.
