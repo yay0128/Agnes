@@ -407,51 +407,79 @@ def _get_with_retry(
 #
 # Agnes APIs only accept PUBLIC URLs for image inputs. To make the
 # workflow self-contained, the image node auto-uploads the result to a
-# free public host (0x0.st) so the next node can chain on it.
+# Free public hosts, in priority order.  Each entry is
+# (endpoint_url, form_field_name, response_extractor).
+# 0x0.st was our original choice but disabled uploads in 2026
+# ("AI botnet spam").  The fallback chain below keeps the workflow
+# alive as hosts come and go.
 #
-# 0x0.st is:
-#   - Free, no auth, no rate limit on a per-IP basis (soft)
-#   - Returns a permanent public URL
-#   - Accepts up to 512 MB
-# If it fails, the user can paste a URL manually into the next node.
+# Each host: free, no auth, returns a public URL.
+PUBLIC_UPLOAD_HOSTS: list[tuple[str, str, callable]] = [
+    # uguu.se — JSON response, field "url" inside "files" array
+    ("https://uguu.se/upload", "files[]",
+     lambda r: r.json()["files"][0]["url"]),
+    # tmpfiles.org — JSON response, "data.url" key
+    ("https://tmpfiles.org/api/v1/upload", "file",
+     lambda r: r.json()["data"]["url"]),
+    # 0x0.st — disabled but keep as last-ditch fallback in case it returns
+    ("https://0x0.st", "file",
+     lambda r: r.text.strip()),
+]
 
-PUBLIC_UPLOAD_URL = "https://0x0.st"
 
+def _upload_to_public_host(local_path: str, max_attempts_per_host: int = 2) -> str:
+    """Upload a local file to a free public host, trying multiple hosts in order.
 
-def _upload_to_public_host(local_path: str, max_attempts: int = 3) -> str:
-    """Upload a local image file to 0x0.st and return the public URL.
+    Falls back through the PUBLIC_UPLOAD_HOSTS list when one host
+    fails. This is best-effort infrastructure — we deliberately
+    don't fail the whole workflow if all hosts fail, the caller
+    should handle that case (e.g. by instructing the user to
+    upload manually).
 
-    Raises RuntimeError after retries exhausted.  This is best-effort
-    infrastructure — we deliberately don't fail the whole workflow if
-    upload fails, the caller should handle that case (e.g. by
-    instructing the user to upload manually).
+    Returns the public URL of the first successful upload.
+    Raises RuntimeError only if all hosts and all retries failed.
     """
-    last_exc: Exception | None = None
-    for attempt in range(max_attempts):
-        try:
-            with open(local_path, "rb") as f:
-                resp = requests.post(
-                    PUBLIC_UPLOAD_URL,
-                    files={"file": (Path(local_path).name, f)},
-                    timeout=120,
-                )
-            if not resp.ok:
-                raise RuntimeError(
-                    f"upload failed: {resp.status_code} {resp.text[:200]}"
-                )
-            public_url = resp.text.strip()
-            if not public_url.startswith("http"):
-                raise RuntimeError(
-                    f"unexpected upload response: {public_url[:200]}"
-                )
-            print(f"[Agnes] uploaded to {public_url}")
-            return public_url
-        except (requests.RequestException, RuntimeError, OSError) as e:
-            last_exc = e
-            if attempt < max_attempts - 1:
-                _sleep_backoff(attempt, f"upload to {PUBLIC_UPLOAD_URL} failed")
+    filename = Path(local_path).name
+    last_err: Exception | None = None
+
+    for host_url, field, extract in PUBLIC_UPLOAD_HOSTS:
+        for attempt in range(max_attempts_per_host):
+            try:
+                with open(local_path, "rb") as f:
+                    resp = requests.post(
+                        host_url,
+                        files={field: (filename, f)},
+                        timeout=120,
+                    )
+                if not resp.ok:
+                    raise RuntimeError(
+                        f"upload failed: {resp.status_code} {resp.text[:200]}"
+                    )
+                public_url = extract(resp).strip()
+                if not public_url.startswith("http"):
+                    raise RuntimeError(
+                        f"unexpected upload response: {public_url[:200]}"
+                    )
+                print(f"[Agnes] uploaded to {public_url} via {host_url}")
+                return public_url
+            except (requests.RequestException, RuntimeError, OSError,
+                    ValueError, KeyError) as e:
+                last_err = e
+                if attempt < max_attempts_per_host - 1:
+                    _sleep_backoff(
+                        attempt,
+                        f"upload to {host_url} failed ({type(e).__name__})"
+                    )
+                else:
+                    print(
+                        f"[Agnes] giving up on {host_url} after "
+                        f"{max_attempts_per_host} attempts: "
+                        f"{type(e).__name__}: {str(e)[:120]}"
+                    )
+                    # Don't sleep between hosts — fall through immediately
+                    break
     raise RuntimeError(
-        f"upload to {PUBLIC_UPLOAD_URL} failed after {max_attempts} attempts: {last_exc}"
+        f"all upload hosts failed (last error: {last_err})"
     )
 
 
